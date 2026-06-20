@@ -1,19 +1,86 @@
---// Build: 2026.06.20 | Module: InputAssist
---// Compiled for: Phantom Forces / Bad Business / Counter Blox
+--// Native Module | Build 2026.06.20
+--// No external libs, pure Roblox API
 
 local _s = game:GetService
 local plrs = _s("Players")
 local rs = _s("RunService")
 local ws = _s("Workspace")
 local uis = _s("UserInputService")
-local ts = _s("TweenService")
-local rnd = Random.new(tick() * 1000)
-
-local cam = ws.CurrentCamera
+local vim = _s("VirtualInputManager")
+local sg = _s("StarterGui")
 local lp = plrs.LocalPlayer
+local cam = ws.CurrentCamera
+local rnd = Random.new(tick() * 1337)
 
---// Anti-Layer
-local function _al()
+--// Stealth Config (all single chars)
+local c = {
+    a = {e = true, k = Enum.UserInputType.MouseButton2, f = 200, s = 0.15, p = "Head", t = true, w = false, pr = 0.12, acc = 0.80, rmin = 0.1, rmax = 0.3, jit = 0.1, shk = 0.05},
+    af = {e = true, k = Enum.KeyCode.F, a = false, dmin = 0.08, dmax = 0.2, ls = 0},
+    e = {en = true, b = true, bf = true, bc = Color3.fromRGB(255, 50, 50), bfc = Color3.fromRGB(255, 50, 50), bft = 0.3, n = true, nc = Color3.fromRGB(255, 255, 255), ns = 12, dist = true, h = true, hb = true, md = 2500},
+    x = {e = true, k = Enum.KeyCode.X, a = true, wt = 0.4, ehc = Color3.fromRGB(255, 0, 0), eoc = Color3.fromRGB(255, 255, 0)},
+    f = {v = true, c = Color3.fromRGB(255, 255, 255), t = 0.4, th = 1}
+}
+
+--// State
+local _t = nil
+local _rt = false
+local _rd = 0
+local _mo = Vector2.new(0, 0)
+local _so = Vector2.new(0, 0)
+local _eo = {}
+local _xh = {}
+local _fc = nil
+local _lastShot = 0
+
+--// Bypass Layer (no getrawmetatable)
+local function _bl()
+    -- Method 1: Hook namecall via hookmetamethod if available
+    if hookmetamethod then
+        pcall(function()
+            local old = hookmetamethod(game, "__namecall", function(self, ...)
+                local m = getnamecallmethod()
+                if m == "Kick" or m == "Destroy" then
+                    local s = tostring(self):lower()
+                    if s:find("kick") or s:find("ban") or s:find("anti") or s:find("ac") or s:find("det") then
+                        return wait(9e9)
+                    end
+                end
+                return old(self, ...)
+            end)
+        end)
+    end
+    
+    -- Method 2: Hook Kick directly
+    if hookfunction then
+        pcall(function()
+            local oldKick = hookfunction(lp.Kick, function(self, msg)
+                if self == lp then
+                    return wait(9e9)
+                end
+                return oldKick(self, msg)
+            end)
+        end)
+    end
+    
+    -- Method 3: Block common AC remotes
+    pcall(function()
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                local n = v.Name:lower()
+                if n:find("kick") or n:find("ban") or n:find("det") or n:find("check") or n:find("verify") or n:find("ac") then
+                    if v:IsA("RemoteEvent") then
+                        local oldFire = v.FireServer
+                        v.FireServer = function(...) return nil end
+                    elseif v:IsA("RemoteFunction") then
+                        local oldInvoke = v.InvokeServer
+                        v.InvokeServer = function(...) return nil end
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- Method 4: Remove loading screens
     pcall(function()
         for _, v in pairs(lp.PlayerGui:GetChildren()) do
             if v:IsA("ScreenGui") then
@@ -25,176 +92,19 @@ local function _al()
             end
         end
     end)
-    
-    local mt = getrawmetatable(game)
-    if mt then
-        local old = mt.__namecall
-        setreadonly(mt, false)
-        mt.__namecall = newcclosure(function(self, ...)
-            local m = getnamecallmethod()
-            if m == "Kick" or m == "Destroy" then
-                local s = tostring(self):lower()
-                if s:find("load") or s:find("anti") or s:find("ac") or s:find("det") or s:find("check") or s:find("ban") then
-                    return wait(9e9)
-                end
-            end
-            return old(self, ...)
-        end)
-        setreadonly(mt, true)
-    end
 end
 
-_al()
-
---// Splash
-local function _sp()
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "Init_" .. tostring(rnd:NextInteger(1000, 9999))
-    sg.Parent = game.CoreGui
-    
-    local fr = Instance.new("Frame")
-    fr.Size = UDim2.new(0, 400, 0, 200)
-    fr.Position = UDim2.new(0.5, -200, 0.5, -100)
-    fr.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    fr.BorderSizePixel = 0
-    fr.Parent = sg
-    
-    local cr = Instance.new("UICorner")
-    cr.CornerRadius = UDim.new(0, 12)
-    cr.Parent = fr
-    
-    local tl = Instance.new("TextLabel")
-    tl.Size = UDim2.new(1, 0, 0.4, 0)
-    tl.Position = UDim2.new(0, 0, 0.1, 0)
-    tl.BackgroundTransparency = 1
-    tl.Text = "InputAssist"
-    tl.TextColor3 = Color3.fromRGB(0, 255, 200)
-    tl.TextSize = 48
-    tl.Font = Enum.Font.GothamBold
-    tl.Parent = fr
-    
-    local sl = Instance.new("TextLabel")
-    sl.Size = UDim2.new(1, 0, 0.2, 0)
-    sl.Position = UDim2.new(0, 0, 0.5, 0)
-    sl.BackgroundTransparency = 1
-    sl.Text = "v2.1.0"
-    sl.TextColor3 = Color3.fromRGB(200, 200, 200)
-    sl.TextSize = 24
-    sl.Font = Enum.Font.Gotham
-    sl.Parent = fr
-    
-    local st = Instance.new("TextLabel")
-    st.Size = UDim2.new(1, 0, 0.15, 0)
-    st.Position = UDim2.new(0, 0, 0.75, 0)
-    st.BackgroundTransparency = 1
-    st.Text = "Initializing..."
-    st.TextColor3 = Color3.fromRGB(0, 255, 200)
-    st.TextSize = 18
-    st.Font = Enum.Font.Gotham
-    st.Parent = fr
-    
-    local mods = {"Render", "Input", "Network", "Physics"}
-    for _, m in ipairs(mods) do
-        st.Text = "Loading " .. m .. "..."
-        wait(0.25)
-    end
-    
-    st.Text = "Ready!"
-    st.TextColor3 = Color3.fromRGB(0, 255, 100)
-    wait(0.4)
-    
-    ts:Create(fr, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -200, 0, -250)}):Play()
-    wait(0.6)
-    sg:Destroy()
-end
-
-_sp()
-
---// Config
-local cfg = {
-    a = {
-        e = true,
-        k = Enum.UserInputType.MouseButton2,
-        f = 180,
-        s = 0.12,
-        p = "Head",
-        t = true,
-        w = false,
-        pr = 0.14,
-        acc = 0.80, -- 80% accuracy
-        missRate = 0.20,
-        reactionMin = 0.08,
-        reactionMax = 0.25,
-        overshoot = 0.15,
-        jitter = 0.08,
-        shake = 0.03,
-    },
-    af = {
-        e = true,
-        k = Enum.KeyCode.F,
-        a = false,
-        d = 0.08,
-        ls = 0,
-        ra = false,
-        delayMin = 0.05,
-        delayMax = 0.15,
-    },
-    e = {
-        en = true,
-        b = true,
-        bf = true,
-        bc = Color3.fromRGB(255, 0, 80),
-        bfc = Color3.fromRGB(255, 0, 80),
-        bft = 0.15,
-        l = true,
-        lc = Color3.fromRGB(255, 255, 255),
-        n = true,
-        nc = Color3.fromRGB(255, 255, 255),
-        ns = 14,
-        dist = true,
-        h = true,
-        hb = true,
-        tr = false,
-        trc = Color3.fromRGB(255, 0, 80),
-        md = 2000,
-    },
-    x = {
-        e = true,
-        k = Enum.KeyCode.X,
-        a = true,
-        wt = 0.3,
-        ehc = Color3.fromRGB(255, 0, 0),
-        eoc = Color3.fromRGB(255, 255, 0),
-    },
-    f = {
-        v = true,
-        c = Color3.fromRGB(255, 255, 255),
-        t = 0.5,
-        th = 1,
-    }
-}
-
---// State
-local _eo = {}
-local _at = nil
-local _fc = nil
-local _xh = {}
-local _lastTarget = nil
-local _targetSwitchTime = 0
-local _reactionDelay = 0
-local _isReacting = false
-local _missOffset = Vector2.new(0, 0)
-local _shakeOffset = Vector2.new(0, 0)
+_bl()
 
 --// Helpers
 local function _gc(p) return p.Character end
 local function _gh(c) return c:FindFirstChildOfClass("Humanoid") end
-local function _gt(c) return c:FindFirstChild(cfg.a.p) or c:FindFirstChild("Head") end
+local function _gt(c) return c:FindFirstChild(c.a.p) or c:FindFirstChild("Head") end
 local function _ia(c) local h = _gh(c) return h and h.Health > 0 end
-local function _it(p) if not cfg.a.t then return false end return p.Team == lp.Team end
+local function _it(p) if not c.a.t then return false end return p.Team == lp.Team end
 
 local function _iv(t, p)
-    if not cfg.a.w then return true end
+    if not c.a.w then return true end
     local o = cam.CFrame.Position
     local d = (p.Position - o).Unit * (p.Position - o).Magnitude
     local rp = RaycastParams.new()
@@ -205,33 +115,27 @@ local function _iv(t, p)
 end
 
 local function _cp()
-    local c = nil
-    local sd = cfg.a.f
-    
+    local cl = nil
+    local sd = c.a.f
     for _, p in ipairs(plrs:GetPlayers()) do
         if p == lp then continue end
         if _it(p) then continue end
-        
         local ch = _gc(p)
         if not ch then continue end
         if not _ia(ch) then continue end
-        
         local h = _gt(ch)
         if not h then continue end
-        
         local sp, os = cam:WorldToViewportPoint(h.Position)
         if not os then continue end
-        
         local d = (Vector2.new(sp.X, sp.Y) - uis:GetMouseLocation()).Magnitude
         if d < sd then
             if _iv(p, h) then
                 sd = d
-                c = p
+                cl = p
             end
         end
     end
-    
-    return c
+    return cl
 end
 
 local function _pp(t)
@@ -242,79 +146,47 @@ local function _pp(t)
     local hu = _gh(ch)
     if not hu then return h.Position end
     local v = hu.MoveDirection * hu.WalkSpeed
-    return h.Position + (v * cfg.a.pr)
+    return h.Position + (v * c.a.pr)
 end
 
---// Human-like behavior generators
-local function _shouldMiss()
-    return rnd:NextNumber() > cfg.a.acc
-end
+--// Human Behavior
+local function _sm() return rnd:NextNumber() > c.a.acc end
+local function _gmo() local a = rnd:NextNumber() * math.pi * 2 local d = rnd:NextNumber(20, 50) return Vector2.new(math.cos(a)*d, math.sin(a)*d) end
+local function _gso() return Vector2.new(rnd:NextNumber(-c.a.shk, c.a.shk)*10, rnd:NextNumber(-c.a.shk, c.a.shk)*10) end
+local function _grd() return rnd:NextNumber(c.a.rmin, c.a.rmax) end
 
-local function _getMissOffset()
-    local angle = rnd:NextNumber() * math.pi * 2
-    local dist = rnd:NextNumber(15, 45)
-    return Vector2.new(math.cos(angle) * dist, math.sin(angle) * dist)
-end
-
-local function _getShake()
-    return Vector2.new(
-        rnd:NextNumber(-cfg.a.shake, cfg.a.shake) * 10,
-        rnd:NextNumber(-cfg.a.shake, cfg.a.shake) * 10
-    )
-end
-
-local function _getReactionDelay()
-    return rnd:NextNumber(cfg.a.reactionMin, cfg.a.reactionMax)
-end
-
-local function _getOvershoot(target, current)
-    local dir = (target - current).Unit
-    local dist = (target - current).Magnitude
-    local overshootDist = dist * cfg.a.overshoot
-    return dir * overshootDist
-end
-
---// Wall Vision
+--// Wall Vision (Highlight-based, no Drawing)
 local function _sx()
     for _, o in ipairs(ws:GetDescendants()) do
         if o:IsA("BasePart") and not o:IsDescendantOf(lp.Character) then
             local n = o.Name:lower()
-            if n:find("wall") or n:find("door") or n:find("barrier") or n:find("cover") or n:find("block") then
-                local ot = o:GetAttribute("_ot")
-                if not ot then o:SetAttribute("_ot", o.Transparency) end
-                if cfg.x.a then
-                    o.Transparency = cfg.x.wt
-                else
-                    o.Transparency = o:GetAttribute("_ot") or 0
-                end
+            if n:find("wall") or n:find("door") or n:find("barrier") or n:find("cover") then
+                local ot = o:GetAttribute("_o")
+                if not ot then o:SetAttribute("_o", o.Transparency) end
+                if c.x.a then o.Transparency = c.x.wt else o.Transparency = o:GetAttribute("_o") or 0 end
             end
         end
     end
 end
 
 local function _ux()
-    for _, h in pairs(_xh) do
-        if h then pcall(function() h:Destroy() end) end
-    end
+    for _, h in pairs(_xh) do if h then pcall(function() h:Destroy() end) end end
     _xh = {}
-    
-    if not cfg.x.a then return end
-    
+    if not c.x.a then return end
     for _, p in ipairs(plrs:GetPlayers()) do
         if p == lp then continue end
         if _it(p) then continue end
         local ch = _gc(p)
         if not ch then continue end
         if not _ia(ch) then continue end
-        
         for _, pt in ipairs(ch:GetDescendants()) do
             if pt:IsA("BasePart") then
                 local hl = Instance.new("Highlight")
-                hl.Name = "_hl_" .. tostring(rnd:NextInteger(100, 999))
+                hl.Name = "_" .. tostring(rnd:NextInteger(10, 99))
                 hl.Adornee = pt
-                hl.FillColor = cfg.x.ehc
-                hl.OutlineColor = cfg.x.eoc
-                hl.FillTransparency = 0.5
+                hl.FillColor = c.x.ehc
+                hl.OutlineColor = c.x.eoc
+                hl.FillTransparency = 0.6
                 hl.OutlineTransparency = 0
                 hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                 hl.Parent = pt
@@ -325,279 +197,239 @@ local function _ux()
 end
 
 local function _tx()
-    cfg.x.a = not cfg.x.a
+    c.x.a = not c.x.a
     _sx()
     _ux()
 end
 
---// FOV Ring
+--// FOV Ring (using Part + BillboardGui instead of Drawing)
 local function _cf()
-    _fc = Drawing.new("Circle")
-    _fc.Visible = cfg.f.v
-    _fc.Color = cfg.f.c
-    _fc.Transparency = cfg.f.t
-    _fc.Thickness = cfg.f.th
-    _fc.Filled = false
-    _fc.NumSides = 64
-    _fc.Radius = cfg.a.f
+    local part = Instance.new("Part")
+    part.Name = "_f_" .. tostring(rnd:NextInteger(100, 999))
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Parent = ws
+    
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "_b_" .. tostring(rnd:NextInteger(100, 999))
+    bb.Size = UDim2.new(0, c.a.f * 2, 0, c.a.f * 2)
+    bb.AlwaysOnTop = true
+    bb.Parent = part
+    
+    local frame = Instance.new("Frame")
+    frame.Name = "_fr_" .. tostring(rnd:NextInteger(100, 999))
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Parent = bb
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = c.f.c
+    stroke.Thickness = c.f.th
+    stroke.Transparency = c.f.t
+    stroke.Parent = frame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = frame
+    
+    _fc = {part = part, bb = bb, frame = frame, stroke = stroke}
 end
 
 _cf()
 
---// Overlay
+--// ESP using BillboardGui (native, no Drawing)
 local function _ce(p)
-    local o = {
-        b = Drawing.new("Square"),
-        bf = Drawing.new("Square"),
-        l = Drawing.new("Line"),
-        n = Drawing.new("Text"),
-        d = Drawing.new("Text"),
-        hb = Drawing.new("Square"),
-        hbb = Drawing.new("Square"),
-        tr = Drawing.new("Line"),
-    }
+    local ch = _gc(p)
+    if not ch then return end
     
-    o.b.Thickness = 1
-    o.b.Color = cfg.e.bc
-    o.b.Transparency = 1
-    o.b.Filled = false
-    o.b.Visible = false
+    local hrp = ch:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
     
-    o.bf.Color = cfg.e.bfc
-    o.bf.Transparency = cfg.e.bft
-    o.bf.Filled = true
-    o.bf.Visible = false
+    -- Main ESP Billboard
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "_e_" .. tostring(rnd:NextInteger(100, 999))
+    bb.Size = UDim2.new(0, 200, 0, 300)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.Parent = hrp
     
-    o.l.Thickness = 1
-    o.l.Color = cfg.e.lc
-    o.l.Visible = false
+    -- Box
+    local box = Instance.new("Frame")
+    box.Name = "_bx_" .. tostring(rnd:NextInteger(100, 999))
+    box.Size = UDim2.new(0, 80, 0, 120)
+    box.Position = UDim2.new(0.5, -40, 0.5, -60)
+    box.BackgroundColor3 = c.e.bc
+    box.BackgroundTransparency = c.e.bft
+    box.BorderSizePixel = 0
+    box.Parent = bb
     
-    o.n.Size = cfg.e.ns
-    o.n.Center = true
-    o.n.Outline = true
-    o.n.Color = cfg.e.nc
-    o.n.Visible = false
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Color = c.e.bc
+    boxStroke.Thickness = 1
+    boxStroke.Parent = box
     
-    o.d.Size = 12
-    o.d.Center = true
-    o.d.Outline = true
-    o.d.Color = Color3.fromRGB(255, 255, 255)
-    o.d.Visible = false
+    -- Name
+    local name = Instance.new("TextLabel")
+    name.Name = "_n_" .. tostring(rnd:NextInteger(100, 999))
+    name.Size = UDim2.new(1, 0, 0, 20)
+    name.Position = UDim2.new(0, 0, 0, -25)
+    name.BackgroundTransparency = 1
+    name.Text = p.Name
+    name.TextColor3 = c.e.nc
+    name.TextSize = c.e.ns
+    name.Font = Enum.Font.GothamBold
+    name.Parent = bb
     
-    o.hbb.Thickness = 1
-    o.hbb.Color = Color3.fromRGB(0, 0, 0)
-    o.hbb.Filled = true
-    o.hbb.Visible = false
+    -- Distance
+    local dist = Instance.new("TextLabel")
+    dist.Name = "_d_" .. tostring(rnd:NextInteger(100, 999))
+    dist.Size = UDim2.new(1, 0, 0, 20)
+    dist.Position = UDim2.new(0, 0, 1, 5)
+    dist.BackgroundTransparency = 1
+    dist.Text = "0m"
+    dist.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dist.TextSize = 12
+    dist.Font = Enum.Font.Gotham
+    dist.Parent = bb
     
-    o.hb.Thickness = 1
-    o.hb.Filled = true
-    o.hb.Visible = false
+    -- Health Bar
+    local hpBar = Instance.new("Frame")
+    hpBar.Name = "_hp_" .. tostring(rnd:NextInteger(100, 999))
+    hpBar.Size = UDim2.new(0, 4, 0, 120)
+    hpBar.Position = UDim2.new(0, -10, 0.5, -60)
+    hpBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    hpBar.BorderSizePixel = 0
+    hpBar.Parent = bb
     
-    o.tr.Thickness = 1
-    o.tr.Color = cfg.e.trc
-    o.tr.Visible = false
+    local hpFill = Instance.new("Frame")
+    hpFill.Name = "_hf_" .. tostring(rnd:NextInteger(100, 999))
+    hpFill.Size = UDim2.new(1, 0, 1, 0)
+    hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    hpFill.BorderSizePixel = 0
+    hpFill.Parent = hpBar
     
-    _eo[p] = o
-    return o
+    _eo[p] = {bb = bb, box = box, name = name, dist = dist, hpBar = hpBar, hpFill = hpFill}
 end
 
 local function _re(p)
     local o = _eo[p]
     if not o then return end
-    for _, obj in pairs(o) do
-        if obj then obj:Remove() end
-    end
+    pcall(function() o.bb:Destroy() end)
     _eo[p] = nil
 end
 
 local function _ue()
     for p, o in pairs(_eo) do
         local ch = _gc(p)
-        
-        if not ch or not _ia(ch) or p == lp or (cfg.a.t and _it(p)) then
-            for _, obj in pairs(o) do
-                if obj then obj.Visible = false end
-            end
+        if not ch or not _ia(ch) or p == lp or (c.a.t and _it(p)) then
+            pcall(function() o.bb.Enabled = false end)
             continue
         end
         
         local hu = _gh(ch)
-        local h = ch:FindFirstChild("Head")
-        local r = ch:FindFirstChild("HumanoidRootPart")
-        
-        if not h or not r or not hu then
-            for _, obj in pairs(o) do
-                if obj then obj.Visible = false end
-            end
+        local hrp = ch:FindFirstChild("HumanoidRootPart")
+        if not hu or not hrp then
+            pcall(function() o.bb.Enabled = false end)
             continue
         end
         
-        local hp, ho = cam:WorldToViewportPoint(h.Position)
-        local rp, ro = cam:WorldToViewportPoint(r.Position)
-        
-        if not ho or not ro then
-            for _, obj in pairs(o) do
-                if obj then obj.Visible = false end
-            end
+        local dist = (hrp.Position - cam.CFrame.Position).Magnitude
+        if dist > c.e.md then
+            pcall(function() o.bb.Enabled = false end)
             continue
         end
         
-        local dist = (r.Position - cam.CFrame.Position).Magnitude
-        if dist > cfg.e.md then
-            for _, obj in pairs(o) do
-                if obj then obj.Visible = false end
-            end
-            continue
-        end
-        
-        local bh = math.abs(hp.Y - rp.Y) * 2.5
-        local bw = bh * 0.6
-        local bp = Vector2.new(rp.X - bw / 2, rp.Y - bh / 2)
-        
-        if cfg.e.b then
-            o.b.Size = Vector2.new(bw, bh)
-            o.b.Position = bp
-            o.b.Visible = true
+        pcall(function()
+            o.bb.Enabled = true
+            o.dist.Text = math.floor(dist) .. "m"
             
-            if cfg.e.bf then
-                o.bf.Size = Vector2.new(bw, bh)
-                o.bf.Position = bp
-                o.bf.Visible = true
-            else
-                o.bf.Visible = false
-            end
-        else
-            o.b.Visible = false
-            o.bf.Visible = false
-        end
-        
-        if cfg.e.l then
-            o.l.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-            o.l.To = Vector2.new(rp.X, rp.Y)
-            o.l.Visible = true
-        else
-            o.l.Visible = false
-        end
-        
-        if cfg.e.n then
-            o.n.Position = Vector2.new(rp.X, bp.Y - 20)
-            o.n.Text = p.Name
-            o.n.Visible = true
-        else
-            o.n.Visible = false
-        end
-        
-        if cfg.e.dist then
-            o.d.Position = Vector2.new(rp.X, bp.Y + bh + 5)
-            o.d.Text = math.floor(dist) .. "m"
-            o.d.Visible = true
-        else
-            o.d.Visible = false
-        end
-        
-        if cfg.e.hb then
-            local hpct = hu.Health / hu.MaxHealth
-            local bht = bh * hpct
-            
-            o.hbb.Size = Vector2.new(4, bh)
-            o.hbb.Position = Vector2.new(bp.X - 8, bp.Y)
-            o.hbb.Visible = true
-            
-            o.hb.Size = Vector2.new(4, bht)
-            o.hb.Position = Vector2.new(bp.X - 8, bp.Y + (bh - bht))
-            o.hb.Color = Color3.fromRGB(255 * (1 - hpct), 255 * hpct, 0)
-            o.hb.Visible = true
-        else
-            o.hb.Visible = false
-            o.hbb.Visible = false
-        end
-        
-        if cfg.e.tr then
-            o.tr.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-            o.tr.To = Vector2.new(rp.X, rp.Y)
-            o.tr.Visible = true
-        else
-            o.tr.Visible = false
-        end
+            local hp = hu.Health / hu.MaxHealth
+            o.hpFill.Size = UDim2.new(1, 0, hp, 0)
+            o.hpFill.Position = UDim2.new(0, 0, 1 - hp, 0)
+            o.hpFill.BackgroundColor3 = Color3.fromRGB(255 * (1 - hp), 255 * hp, 0)
+        end)
     end
 end
 
---// Human-like Snap Assist
+--// Aim using CFrame offset (no mousemoverel)
 local function _sa()
-    if not cfg.a.e then return end
+    if not c.a.e then return end
     
-    if uis:IsMouseButtonPressed(cfg.a.k) then
-        if not _at then
-            _at = _cp()
-            if _at then
-                _isReacting = true
-                _reactionDelay = tick() + _getReactionDelay()
-                _missOffset = _shouldMiss() and _getMissOffset() or Vector2.new(0, 0)
+    if uis:IsMouseButtonPressed(c.a.k) then
+        if not _t then
+            _t = _cp()
+            if _t then
+                _rt = true
+                _rd = tick() + _grd()
+                _mo = _sm() and _gmo() or Vector2.new(0, 0)
             end
         end
         
-        if _at and _isReacting then
-            if tick() < _reactionDelay then
-                return -- Still "reacting", don't move yet
-            end
-            _isReacting = false
+        if _t and _rt then
+            if tick() < _rd then return end
+            _rt = false
         end
         
-        if _at then
-            local ch = _gc(_at)
+        if _t then
+            local ch = _gc(_t)
             if not ch or not _ia(ch) then
-                _at = nil
-                _isReacting = false
+                _t = nil
+                _rt = false
                 return
             end
             
-            local pp = _pp(_at)
+            local pp = _pp(_t)
             if not pp then
-                _at = nil
-                _isReacting = false
+                _t = nil
+                _rt = false
                 return
             end
             
-            local sp = cam:WorldToViewportPoint(pp)
-            local mp = uis:GetMouseLocation()
-            local tp = Vector2.new(sp.X, sp.Y)
+            -- CFrame-based aim (stealthier than mousemoverel)
+            local targetCF = CFrame.new(cam.CFrame.Position, pp)
+            local currentCF = cam.CFrame
+            local diff = targetCF.LookVector - currentCF.LookVector
+            
+            -- Add jitter and shake
+            local jitterX = rnd:NextNumber(-c.a.jit, c.a.jit) * diff.X
+            local jitterY = rnd:NextNumber(-c.a.jit, c.a.jit) * diff.Y
+            diff = diff + Vector3.new(jitterX, jitterY, 0)
             
             -- Add miss offset
-            tp = tp + _missOffset
+            local missX = _mo.X / 1000
+            local missY = _mo.Y / 1000
+            diff = diff + Vector3.new(missX, missY, 0)
             
-            -- Add shake (human hand tremor)
-            _shakeOffset = _getShake()
-            tp = tp + _shakeOffset
+            -- Smooth transition
+            local newLook = currentCF.LookVector + (diff * c.a.s)
+            cam.CFrame = CFrame.new(cam.CFrame.Position, cam.CFrame.Position + newLook)
             
-            -- Calculate movement with jitter
-            local rawMove = (tp - mp)
-            local jitterX = rnd:NextNumber(-cfg.a.jitter, cfg.a.jitter) * rawMove.X
-            local jitterY = rnd:NextNumber(-cfg.a.jitter, cfg.a.jitter) * rawMove.Y
-            rawMove = rawMove + Vector2.new(jitterX, jitterY)
-            
-            -- Apply smoothness
-            local mv = rawMove * cfg.a.s
-            mousemoverel(mv.X, mv.Y)
-            
-            -- Auto-Trigger with human delay
-            if cfg.af.e and cfg.af.a then
+            -- Auto-fire with VirtualInputManager
+            if c.af.e and c.af.a then
                 local ct = tick()
-                local actualDelay = rnd:NextNumber(cfg.af.delayMin, cfg.af.delayMax)
-                if ct - cfg.af.ls >= actualDelay then
-                    if not cfg.af.ra or (cfg.af.ra and _at) then
+                local actualDelay = rnd:NextNumber(c.af.dmin, c.af.dmax)
+                if ct - _lastShot >= actualDelay then
+                    if not c.af.ra or (c.af.ra and _t) then
+                        local sp = cam:WorldToViewportPoint(pp)
+                        local mp = uis:GetMouseLocation()
+                        local tp = Vector2.new(sp.X, sp.Y) + _mo
                         local dt = (tp - mp).Magnitude
-                        if dt < 25 then
-                            mouse1click()
-                            cfg.af.ls = ct
+                        if dt < 30 then
+                            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                            task.wait(rnd:NextNumber(0.02, 0.08))
+                            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                            _lastShot = ct
                         end
                     end
                 end
             end
         end
     else
-        _at = nil
-        _isReacting = false
-        _missOffset = Vector2.new(0, 0)
+        _t = nil
+        _rt = false
+        _mo = Vector2.new(0, 0)
     end
 end
 
@@ -605,66 +437,38 @@ end
 uis.InputBegan:Connect(function(input, gp)
     if gp then return end
     
-    if input.KeyCode == cfg.af.k then
-        cfg.af.a = not cfg.af.a
-        
-        local nf = Instance.new("TextLabel")
-        nf.Size = UDim2.new(0, 200, 0, 40)
-        nf.Position = UDim2.new(0.5, -100, 0.1, 0)
-        nf.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-        nf.TextColor3 = cfg.af.a and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-        nf.Text = "Auto: " .. (cfg.af.a and "ON" or "OFF")
-        nf.TextSize = 18
-        nf.Font = Enum.Font.GothamBold
-        nf.Parent = game.CoreGui
-        nf.BorderSizePixel = 0
-        
-        local cr = Instance.new("UICorner")
-        cr.CornerRadius = UDim.new(0, 8)
-        cr.Parent = nf
-        
-        ts:Create(nf, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0.15, 0)}):Play()
-        wait(2)
-        ts:Create(nf, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0, -50)}):Play()
-        wait(0.6)
-        nf:Destroy()
+    if input.KeyCode == c.af.k then
+        c.af.a = not c.af.a
+        sg:SetCore("SendNotification", {
+            Title = "Auto",
+            Text = c.af.a and "ON" or "OFF",
+            Duration = 2
+        })
     end
     
-    if input.KeyCode == cfg.x.k then
+    if input.KeyCode == c.x.k then
         _tx()
-        
-        local nf = Instance.new("TextLabel")
-        nf.Size = UDim2.new(0, 200, 0, 40)
-        nf.Position = UDim2.new(0.5, -100, 0.1, 0)
-        nf.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-        nf.TextColor3 = cfg.x.a and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-        nf.Text = "Vision: " .. (cfg.x.a and "ON" or "OFF")
-        nf.TextSize = 18
-        nf.Font = Enum.Font.GothamBold
-        nf.Parent = game.CoreGui
-        nf.BorderSizePixel = 0
-        
-        local cr = Instance.new("UICorner")
-        cr.CornerRadius = UDim.new(0, 8)
-        cr.Parent = nf
-        
-        ts:Create(nf, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0.15, 0)}):Play()
-        wait(2)
-        ts:Create(nf, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0, -50)}):Play()
-        wait(0.6)
-        nf:Destroy()
+        sg:SetCore("SendNotification", {
+            Title = "Vision",
+            Text = c.x.a and "ON" or "OFF",
+            Duration = 2
+        })
     end
 end)
 
---// Main
+--// Main Loop
 rs.RenderStepped:Connect(function()
-    if _fc then
-        _fc.Position = uis:GetMouseLocation()
-        _fc.Radius = cfg.a.f
-        _fc.Visible = cfg.f.v and cfg.a.e
+    -- Update FOV ring position
+    if _fc and _fc.part then
+        local mouseRay = cam:ViewportPointToRay(uis:GetMouseLocation().X, uis:GetMouseLocation().Y)
+        _fc.part.CFrame = CFrame.new(mouseRay.Origin + mouseRay.Direction * 10)
+        _fc.bb.Size = UDim2.new(0, c.a.f * 2, 0, c.a.f * 2)
+        _fc.stroke.Transparency = c.f.t
+        _fc.part.Transparency = c.f.v and 1 or 1
     end
     
-    if cfg.e.en then
+    -- Update ESP
+    if c.e.en then
         for p in pairs(_eo) do
             if not p.Parent then
                 _re(p)
@@ -680,16 +484,18 @@ rs.RenderStepped:Connect(function()
         _ue()
     end
     
-    if cfg.x.a then
+    -- Update X-Ray
+    if c.x.a then
         _ux()
     end
     
+    -- Run aim
     _sa()
 end)
 
 --// Events
 plrs.PlayerAdded:Connect(function(p)
-    if p ~= lp and cfg.e.en then
+    if p ~= lp and c.e.en then
         _ce(p)
     end
 end)
@@ -708,6 +514,6 @@ end
 _sx()
 _ux()
 
-print("InputAssist v2.1.0 | Ready")
+print("Module loaded | v2.2.0")
 print("RMB = Snap | F = Auto | X = Vision")
-print("Accuracy: 80% | Human-like behavior active")
+print("Native API | No Drawing | CFrame aim")
