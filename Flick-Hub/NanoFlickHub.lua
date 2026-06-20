@@ -1,519 +1,807 @@
---// Native Module | Build 2026.06.20
---// No external libs, pure Roblox API
+--// NANOXYIN BYPASS WRAPPER v3.0
+--// SCRIPT BY XYIN
+--// Load this FIRST, then original script runs inside protected environment
 
-local _s = game:GetService
-local plrs = _s("Players")
-local rs = _s("RunService")
-local ws = _s("Workspace")
-local uis = _s("UserInputService")
-local vim = _s("VirtualInputManager")
-local sg = _s("StarterGui")
-local lp = plrs.LocalPlayer
-local cam = ws.CurrentCamera
-local rnd = Random.new(tick() * 1337)
+--// PROTECTION LAYER 1: Environment Setup
+local _env = getfenv()
+local _game = game
+local _gs = _game.GetService
 
---// Stealth Config (all single chars)
-local c = {
-    a = {e = true, k = Enum.UserInputType.MouseButton2, f = 200, s = 0.15, p = "Head", t = true, w = false, pr = 0.12, acc = 0.80, rmin = 0.1, rmax = 0.3, jit = 0.1, shk = 0.05},
-    af = {e = true, k = Enum.KeyCode.F, a = false, dmin = 0.08, dmax = 0.2, ls = 0},
-    e = {en = true, b = true, bf = true, bc = Color3.fromRGB(255, 50, 50), bfc = Color3.fromRGB(255, 50, 50), bft = 0.3, n = true, nc = Color3.fromRGB(255, 255, 255), ns = 12, dist = true, h = true, hb = true, md = 2500},
-    x = {e = true, k = Enum.KeyCode.X, a = true, wt = 0.4, ehc = Color3.fromRGB(255, 0, 0), eoc = Color3.fromRGB(255, 255, 0)},
-    f = {v = true, c = Color3.fromRGB(255, 255, 255), t = 0.4, th = 1}
-}
+local Players = _gs(_game, "Players")
+local RunService = _gs(_game, "RunService")
+local Workspace = _gs(_game, "Workspace")
+local UserInputService = _gs(_game, "UserInputService")
+local TweenService = _gs(_game, "TweenService")
+local Lighting = _gs(_game, "Lighting")
+local CoreGui = _gs(_game, "CoreGui")
 
---// State
-local _t = nil
-local _rt = false
-local _rd = 0
-local _mo = Vector2.new(0, 0)
-local _so = Vector2.new(0, 0)
-local _eo = {}
-local _xh = {}
-local _fc = nil
-local _lastShot = 0
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
---// Bypass Layer (no getrawmetatable)
-local function _bl()
-    -- Method 1: Hook namecall via hookmetamethod if available
-    if hookmetamethod then
-        pcall(function()
-            local old = hookmetamethod(game, "__namecall", function(self, ...)
-                local m = getnamecallmethod()
-                if m == "Kick" or m == "Destroy" then
-                    local s = tostring(self):lower()
-                    if s:find("kick") or s:find("ban") or s:find("anti") or s:find("ac") or s:find("det") then
+--// PROTECTION LAYER 2: Anti-Detection Hooks
+local function SetupBypass()
+    local success = pcall(function()
+        -- Hook 1: Block Kick method
+        local mt = getrawmetatable(game)
+        if mt then
+            local oldNamecall = mt.__namecall
+            setreadonly(mt, false)
+            
+            mt.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                if method == "Kick" then
+                    local selfStr = tostring(self):lower()
+                    if selfStr:find("player") or selfStr == tostring(LocalPlayer):lower() then
                         return wait(9e9)
                     end
                 end
-                return old(self, ...)
-            end)
-        end)
-    end
-    
-    -- Method 2: Hook Kick directly
-    if hookfunction then
-        pcall(function()
-            local oldKick = hookfunction(lp.Kick, function(self, msg)
-                if self == lp then
-                    return wait(9e9)
-                end
-                return oldKick(self, msg)
-            end)
-        end)
-    end
-    
-    -- Method 3: Block common AC remotes
-    pcall(function()
-        for _, v in pairs(game:GetDescendants()) do
-            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-                local n = v.Name:lower()
-                if n:find("kick") or n:find("ban") or n:find("det") or n:find("check") or n:find("verify") or n:find("ac") then
-                    if v:IsA("RemoteEvent") then
-                        local oldFire = v.FireServer
-                        v.FireServer = function(...) return nil end
-                    elseif v:IsA("RemoteFunction") then
-                        local oldInvoke = v.InvokeServer
-                        v.InvokeServer = function(...) return nil end
+                if method == "Destroy" then
+                    local selfStr = tostring(self):lower()
+                    if selfStr:find("anticheat") or selfStr:find("ac") or selfStr:find("detection") then
+                        return wait(9e9)
                     end
                 end
-            end
-        end
-    end)
-    
-    -- Method 4: Remove loading screens
-    pcall(function()
-        for _, v in pairs(lp.PlayerGui:GetChildren()) do
-            if v:IsA("ScreenGui") then
-                local n = v.Name:lower()
-                if n:find("load") or n:find("anti") or n:find("ac") or n:find("det") or n:find("check") then
-                    v.Enabled = false
-                    pcall(function() v:Destroy() end)
-                end
-            end
-        end
-    end)
-end
-
-_bl()
-
---// Helpers
-local function _gc(p) return p.Character end
-local function _gh(c) return c:FindFirstChildOfClass("Humanoid") end
-local function _gt(c) return c:FindFirstChild(c.a.p) or c:FindFirstChild("Head") end
-local function _ia(c) local h = _gh(c) return h and h.Health > 0 end
-local function _it(p) if not c.a.t then return false end return p.Team == lp.Team end
-
-local function _iv(t, p)
-    if not c.a.w then return true end
-    local o = cam.CFrame.Position
-    local d = (p.Position - o).Unit * (p.Position - o).Magnitude
-    local rp = RaycastParams.new()
-    rp.FilterDescendantsInstances = {lp.Character, cam}
-    rp.FilterType = Enum.RaycastFilterType.Blacklist
-    local r = ws:Raycast(o, d, rp)
-    return r == nil or r.Instance:IsDescendantOf(t.Character)
-end
-
-local function _cp()
-    local cl = nil
-    local sd = c.a.f
-    for _, p in ipairs(plrs:GetPlayers()) do
-        if p == lp then continue end
-        if _it(p) then continue end
-        local ch = _gc(p)
-        if not ch then continue end
-        if not _ia(ch) then continue end
-        local h = _gt(ch)
-        if not h then continue end
-        local sp, os = cam:WorldToViewportPoint(h.Position)
-        if not os then continue end
-        local d = (Vector2.new(sp.X, sp.Y) - uis:GetMouseLocation()).Magnitude
-        if d < sd then
-            if _iv(p, h) then
-                sd = d
-                cl = p
-            end
-        end
-    end
-    return cl
-end
-
-local function _pp(t)
-    local ch = _gc(t)
-    if not ch then return nil end
-    local h = _gt(ch)
-    if not h then return nil end
-    local hu = _gh(ch)
-    if not hu then return h.Position end
-    local v = hu.MoveDirection * hu.WalkSpeed
-    return h.Position + (v * c.a.pr)
-end
-
---// Human Behavior
-local function _sm() return rnd:NextNumber() > c.a.acc end
-local function _gmo() local a = rnd:NextNumber() * math.pi * 2 local d = rnd:NextNumber(20, 50) return Vector2.new(math.cos(a)*d, math.sin(a)*d) end
-local function _gso() return Vector2.new(rnd:NextNumber(-c.a.shk, c.a.shk)*10, rnd:NextNumber(-c.a.shk, c.a.shk)*10) end
-local function _grd() return rnd:NextNumber(c.a.rmin, c.a.rmax) end
-
---// Wall Vision (Highlight-based, no Drawing)
-local function _sx()
-    for _, o in ipairs(ws:GetDescendants()) do
-        if o:IsA("BasePart") and not o:IsDescendantOf(lp.Character) then
-            local n = o.Name:lower()
-            if n:find("wall") or n:find("door") or n:find("barrier") or n:find("cover") then
-                local ot = o:GetAttribute("_o")
-                if not ot then o:SetAttribute("_o", o.Transparency) end
-                if c.x.a then o.Transparency = c.x.wt else o.Transparency = o:GetAttribute("_o") or 0 end
-            end
-        end
-    end
-end
-
-local function _ux()
-    for _, h in pairs(_xh) do if h then pcall(function() h:Destroy() end) end end
-    _xh = {}
-    if not c.x.a then return end
-    for _, p in ipairs(plrs:GetPlayers()) do
-        if p == lp then continue end
-        if _it(p) then continue end
-        local ch = _gc(p)
-        if not ch then continue end
-        if not _ia(ch) then continue end
-        for _, pt in ipairs(ch:GetDescendants()) do
-            if pt:IsA("BasePart") then
-                local hl = Instance.new("Highlight")
-                hl.Name = "_" .. tostring(rnd:NextInteger(10, 99))
-                hl.Adornee = pt
-                hl.FillColor = c.x.ehc
-                hl.OutlineColor = c.x.eoc
-                hl.FillTransparency = 0.6
-                hl.OutlineTransparency = 0
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Parent = pt
-                table.insert(_xh, hl)
-            end
-        end
-    end
-end
-
-local function _tx()
-    c.x.a = not c.x.a
-    _sx()
-    _ux()
-end
-
---// FOV Ring (using Part + BillboardGui instead of Drawing)
-local function _cf()
-    local part = Instance.new("Part")
-    part.Name = "_f_" .. tostring(rnd:NextInteger(100, 999))
-    part.Anchored = true
-    part.CanCollide = false
-    part.Transparency = 1
-    part.Size = Vector3.new(0.1, 0.1, 0.1)
-    part.Parent = ws
-    
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "_b_" .. tostring(rnd:NextInteger(100, 999))
-    bb.Size = UDim2.new(0, c.a.f * 2, 0, c.a.f * 2)
-    bb.AlwaysOnTop = true
-    bb.Parent = part
-    
-    local frame = Instance.new("Frame")
-    frame.Name = "_fr_" .. tostring(rnd:NextInteger(100, 999))
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundTransparency = 1
-    frame.Parent = bb
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = c.f.c
-    stroke.Thickness = c.f.th
-    stroke.Transparency = c.f.t
-    stroke.Parent = frame
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = frame
-    
-    _fc = {part = part, bb = bb, frame = frame, stroke = stroke}
-end
-
-_cf()
-
---// ESP using BillboardGui (native, no Drawing)
-local function _ce(p)
-    local ch = _gc(p)
-    if not ch then return end
-    
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    
-    -- Main ESP Billboard
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "_e_" .. tostring(rnd:NextInteger(100, 999))
-    bb.Size = UDim2.new(0, 200, 0, 300)
-    bb.StudsOffset = Vector3.new(0, 3, 0)
-    bb.AlwaysOnTop = true
-    bb.Parent = hrp
-    
-    -- Box
-    local box = Instance.new("Frame")
-    box.Name = "_bx_" .. tostring(rnd:NextInteger(100, 999))
-    box.Size = UDim2.new(0, 80, 0, 120)
-    box.Position = UDim2.new(0.5, -40, 0.5, -60)
-    box.BackgroundColor3 = c.e.bc
-    box.BackgroundTransparency = c.e.bft
-    box.BorderSizePixel = 0
-    box.Parent = bb
-    
-    local boxStroke = Instance.new("UIStroke")
-    boxStroke.Color = c.e.bc
-    boxStroke.Thickness = 1
-    boxStroke.Parent = box
-    
-    -- Name
-    local name = Instance.new("TextLabel")
-    name.Name = "_n_" .. tostring(rnd:NextInteger(100, 999))
-    name.Size = UDim2.new(1, 0, 0, 20)
-    name.Position = UDim2.new(0, 0, 0, -25)
-    name.BackgroundTransparency = 1
-    name.Text = p.Name
-    name.TextColor3 = c.e.nc
-    name.TextSize = c.e.ns
-    name.Font = Enum.Font.GothamBold
-    name.Parent = bb
-    
-    -- Distance
-    local dist = Instance.new("TextLabel")
-    dist.Name = "_d_" .. tostring(rnd:NextInteger(100, 999))
-    dist.Size = UDim2.new(1, 0, 0, 20)
-    dist.Position = UDim2.new(0, 0, 1, 5)
-    dist.BackgroundTransparency = 1
-    dist.Text = "0m"
-    dist.TextColor3 = Color3.fromRGB(255, 255, 255)
-    dist.TextSize = 12
-    dist.Font = Enum.Font.Gotham
-    dist.Parent = bb
-    
-    -- Health Bar
-    local hpBar = Instance.new("Frame")
-    hpBar.Name = "_hp_" .. tostring(rnd:NextInteger(100, 999))
-    hpBar.Size = UDim2.new(0, 4, 0, 120)
-    hpBar.Position = UDim2.new(0, -10, 0.5, -60)
-    hpBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    hpBar.BorderSizePixel = 0
-    hpBar.Parent = bb
-    
-    local hpFill = Instance.new("Frame")
-    hpFill.Name = "_hf_" .. tostring(rnd:NextInteger(100, 999))
-    hpFill.Size = UDim2.new(1, 0, 1, 0)
-    hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-    hpFill.BorderSizePixel = 0
-    hpFill.Parent = hpBar
-    
-    _eo[p] = {bb = bb, box = box, name = name, dist = dist, hpBar = hpBar, hpFill = hpFill}
-end
-
-local function _re(p)
-    local o = _eo[p]
-    if not o then return end
-    pcall(function() o.bb:Destroy() end)
-    _eo[p] = nil
-end
-
-local function _ue()
-    for p, o in pairs(_eo) do
-        local ch = _gc(p)
-        if not ch or not _ia(ch) or p == lp or (c.a.t and _it(p)) then
-            pcall(function() o.bb.Enabled = false end)
-            continue
+                return oldNamecall(self, ...)
+            end)
+            
+            setreadonly(mt, true)
         end
         
-        local hu = _gh(ch)
-        local hrp = ch:FindFirstChild("HumanoidRootPart")
-        if not hu or not hrp then
-            pcall(function() o.bb.Enabled = false end)
-            continue
-        end
-        
-        local dist = (hrp.Position - cam.CFrame.Position).Magnitude
-        if dist > c.e.md then
-            pcall(function() o.bb.Enabled = false end)
-            continue
-        end
-        
-        pcall(function()
-            o.bb.Enabled = true
-            o.dist.Text = math.floor(dist) .. "m"
-            
-            local hp = hu.Health / hu.MaxHealth
-            o.hpFill.Size = UDim2.new(1, 0, hp, 0)
-            o.hpFill.Position = UDim2.new(0, 0, 1 - hp, 0)
-            o.hpFill.BackgroundColor3 = Color3.fromRGB(255 * (1 - hp), 255 * hp, 0)
-        end)
-    end
-end
-
---// Aim using CFrame offset (no mousemoverel)
-local function _sa()
-    if not c.a.e then return end
-    
-    if uis:IsMouseButtonPressed(c.a.k) then
-        if not _t then
-            _t = _cp()
-            if _t then
-                _rt = true
-                _rd = tick() + _grd()
-                _mo = _sm() and _gmo() or Vector2.new(0, 0)
-            end
-        end
-        
-        if _t and _rt then
-            if tick() < _rd then return end
-            _rt = false
-        end
-        
-        if _t then
-            local ch = _gc(_t)
-            if not ch or not _ia(ch) then
-                _t = nil
-                _rt = false
-                return
-            end
-            
-            local pp = _pp(_t)
-            if not pp then
-                _t = nil
-                _rt = false
-                return
-            end
-            
-            -- CFrame-based aim (stealthier than mousemoverel)
-            local targetCF = CFrame.new(cam.CFrame.Position, pp)
-            local currentCF = cam.CFrame
-            local diff = targetCF.LookVector - currentCF.LookVector
-            
-            -- Add jitter and shake
-            local jitterX = rnd:NextNumber(-c.a.jit, c.a.jit) * diff.X
-            local jitterY = rnd:NextNumber(-c.a.jit, c.a.jit) * diff.Y
-            diff = diff + Vector3.new(jitterX, jitterY, 0)
-            
-            -- Add miss offset
-            local missX = _mo.X / 1000
-            local missY = _mo.Y / 1000
-            diff = diff + Vector3.new(missX, missY, 0)
-            
-            -- Smooth transition
-            local newLook = currentCF.LookVector + (diff * c.a.s)
-            cam.CFrame = CFrame.new(cam.CFrame.Position, cam.CFrame.Position + newLook)
-            
-            -- Auto-fire with VirtualInputManager
-            if c.af.e and c.af.a then
-                local ct = tick()
-                local actualDelay = rnd:NextNumber(c.af.dmin, c.af.dmax)
-                if ct - _lastShot >= actualDelay then
-                    if not c.af.ra or (c.af.ra and _t) then
-                        local sp = cam:WorldToViewportPoint(pp)
-                        local mp = uis:GetMouseLocation()
-                        local tp = Vector2.new(sp.X, sp.Y) + _mo
-                        local dt = (tp - mp).Magnitude
-                        if dt < 30 then
-                            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                            task.wait(rnd:NextNumber(0.02, 0.08))
-                            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                            _lastShot = ct
+        -- Hook 2: Block RemoteEvents that kick/ban
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                local name = v.Name:lower()
+                if name:find("kick") or name:find("ban") or name:find("punish") or name:find("detection") or name:find("report") or name:find("log") then
+                    if v:IsA("RemoteEvent") then
+                        local oldFire = v.FireServer
+                        v.FireServer = function(...)
+                            return nil
+                        end
+                    elseif v:IsA("RemoteFunction") then
+                        local oldInvoke = v.InvokeServer
+                        v.InvokeServer = function(...)
+                            return nil
                         end
                     end
                 end
             end
         end
-    else
-        _t = nil
-        _rt = false
-        _mo = Vector2.new(0, 0)
-    end
-end
-
---// Input
-uis.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    
-    if input.KeyCode == c.af.k then
-        c.af.a = not c.af.a
-        sg:SetCore("SendNotification", {
-            Title = "Auto",
-            Text = c.af.a and "ON" or "OFF",
-            Duration = 2
-        })
-    end
-    
-    if input.KeyCode == c.x.k then
-        _tx()
-        sg:SetCore("SendNotification", {
-            Title = "Vision",
-            Text = c.x.a and "ON" or "OFF",
-            Duration = 2
-        })
-    end
-end)
-
---// Main Loop
-rs.RenderStepped:Connect(function()
-    -- Update FOV ring position
-    if _fc and _fc.part then
-        local mouseRay = cam:ViewportPointToRay(uis:GetMouseLocation().X, uis:GetMouseLocation().Y)
-        _fc.part.CFrame = CFrame.new(mouseRay.Origin + mouseRay.Direction * 10)
-        _fc.bb.Size = UDim2.new(0, c.a.f * 2, 0, c.a.f * 2)
-        _fc.stroke.Transparency = c.f.t
-        _fc.part.Transparency = c.f.v and 1 or 1
-    end
-    
-    -- Update ESP
-    if c.e.en then
-        for p in pairs(_eo) do
-            if not p.Parent then
-                _re(p)
+        
+        -- Hook 3: Block loading screens
+        for _, v in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if v:IsA("ScreenGui") then
+                local name = v.Name:lower()
+                if name:find("loading") or name:find("anticheat") or name:find("ac") or name:find("detection") or name:find("verification") or name:find("check") then
+                    v.Enabled = false
+                    pcall(function() v:Destroy() end)
+                end
             end
         end
         
-        for _, p in ipairs(plrs:GetPlayers()) do
-            if p ~= lp and not _eo[p] then
-                _ce(p)
+        -- Hook 4: Spoof execution context
+        local oldGetfenv = getfenv
+        if oldGetfenv then
+            getfenv = function(level)
+                local env = oldGetfenv(level)
+                if env and env.script then
+                    -- Hide script identity
+                    pcall(function()
+                        env.script.Name = "LocalScript"
+                    end)
+                end
+                return env
             end
         end
         
-        _ue()
-    end
+        -- Hook 5: Block common anti-cheat modules
+        local modules = {
+            "AntiCheat", "AntiExploit", "AntiHack", "ACDetector", 
+            "CheatDetection", "ExploitDetection", "SecurityModule"
+        }
+        for _, modName in ipairs(modules) do
+            local module = game:FindFirstChild(modName, true)
+            if module then
+                pcall(function()
+                    module:Destroy()
+                end)
+            end
+        end
+    end)
     
-    -- Update X-Ray
-    if c.x.a then
-        _ux()
-    end
-    
-    -- Run aim
-    _sa()
-end)
-
---// Events
-plrs.PlayerAdded:Connect(function(p)
-    if p ~= lp and c.e.en then
-        _ce(p)
-    end
-end)
-
-plrs.PlayerRemoving:Connect(function(p)
-    _re(p)
-end)
-
---// Init
-for _, p in ipairs(plrs:GetPlayers()) do
-    if p ~= lp then
-        _ce(p)
-    end
+    return success
 end
 
-_sx()
-_ux()
+SetupBypass()
 
-print("Module loaded | v2.2.0")
-print("RMB = Snap | F = Auto | X = Vision")
-print("Native API | No Drawing | CFrame aim")
+--// PROTECTION LAYER 3: String Encryption Helper
+local function DecryptString(encrypted)
+    -- Simple XOR decryption
+    local key = 42
+    local result = ""
+    for i = 1, #encrypted do
+        local char = string.byte(encrypted:sub(i, i))
+        result = result .. string.char(bit32.bxor(char, key))
+    end
+    return result
+end
+
+--// PROTECTION LAYER 4: Delayed Execution (bypass immediate scan)
+task.wait(0.5)
+
+--// PROTECTION LAYER 5: Load Original Script in Protected Mode
+local function LoadOriginal()
+    -- Original NANOXYIN Script v2.0
+    -- SCRIPT BY XYIN
+    -- Features: Flick Aimbot, Auto-Fire, ESP (Box/Line/Name/Health), X-Ray Wallhack, FOV Lock, Loading Bypass
+    
+    --// SERVICES
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local Workspace = game:GetService("Workspace")
+    local UserInputService = game:GetService("UserInputService")
+    local Camera = Workspace.CurrentCamera
+    local LocalPlayer = Players.LocalPlayer
+    local TweenService = game:GetService("TweenService")
+    
+    --// LOADING BYPASS & INTRO
+    local function LoadingBypass()
+        local success, err = pcall(function()
+            -- Bypass common anti-cheat loading screens
+            for _, v in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+                if v:IsA("ScreenGui") and (v.Name:lower():match("loading") or v.Name:lower():match("anticheat") or v.Name:lower():match("ac") or v.Name:lower():match("detection")) then
+                    v.Enabled = false
+                    v:Destroy()
+                end
+            end
+            
+            -- Hook loading modules
+            local mt = getrawmetatable(game)
+            if mt then
+                local oldNamecall = mt.__namecall
+                setreadonly(mt, false)
+                
+                mt.__namecall = newcclosure(function(self, ...)
+                    local method = getnamecallmethod()
+                    if method == "Kick" or method == "Destroy" then
+                        if tostring(self):lower():match("loading") or tostring(self):lower():match("anticheat") or tostring(self):lower():match("ac") then
+                            return wait(9e9)
+                        end
+                    end
+                    return oldNamecall(self, ...)
+                end)
+                
+                setreadonly(mt, true)
+            end
+        end)
+        
+        -- Intro Screen
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "NanoXyinIntro"
+        ScreenGui.Parent = game.CoreGui
+        
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 400, 0, 200)
+        Frame.Position = UDim2.new(0.5, -200, 0.5, -100)
+        Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScreenGui
+        
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 12)
+        Corner.Parent = Frame
+        
+        local Title = Instance.new("TextLabel")
+        Title.Size = UDim2.new(1, 0, 0.4, 0)
+        Title.Position = UDim2.new(0, 0, 0.1, 0)
+        Title.BackgroundTransparency = 1
+        Title.Text = "NANOXYIN"
+        Title.TextColor3 = Color3.fromRGB(0, 255, 200)
+        Title.TextSize = 48
+        Title.Font = Enum.Font.GothamBold
+        Title.Parent = Frame
+        
+        local SubTitle = Instance.new("TextLabel")
+        SubTitle.Size = UDim2.new(1, 0, 0.2, 0)
+        SubTitle.Position = UDim2.new(0, 0, 0.5, 0)
+        SubTitle.BackgroundTransparency = 1
+        SubTitle.Text = "SCRIPT BY XYIN"
+        SubTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+        SubTitle.TextSize = 24
+        SubTitle.Font = Enum.Font.Gotham
+        SubTitle.Parent = Frame
+        
+        local Status = Instance.new("TextLabel")
+        Status.Size = UDim2.new(1, 0, 0.15, 0)
+        Status.Position = UDim2.new(0, 0, 0.75, 0)
+        Status.BackgroundTransparency = 1
+        Status.Text = "Loading modules..."
+        Status.TextColor3 = Color3.fromRGB(0, 255, 200)
+        Status.TextSize = 18
+        Status.Font = Enum.Font.Gotham
+        Status.Parent = Frame
+        
+        -- Loading animation
+        local modules = {"ESP", "Aimbot", "FOV Lock", "Auto-Fire", "X-Ray Wallhack", "Anti-Cheat Bypass", "Render Engine"}
+        for i, mod in ipairs(modules) do
+            Status.Text = "Loading " .. mod .. "..."
+            wait(0.3)
+        end
+        
+        Status.Text = "Ready!"
+        Status.TextColor3 = Color3.fromRGB(0, 255, 100)
+        wait(0.5)
+        
+        TweenService:Create(Frame, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -200, 0, -250)}):Play()
+        wait(0.6)
+        ScreenGui:Destroy()
+        
+        return success
+    end
+    
+    LoadingBypass()
+    
+    --// CONFIG
+    local Config = {
+        Aimbot = {
+            Enabled = true,
+            Key = Enum.UserInputType.MouseButton2,
+            FOV = 150,
+            Smoothness = 0.08,
+            TargetPart = "Head",
+            TeamCheck = true,
+            WallCheck = false,
+            Prediction = 0.165,
+            FlickMode = true,
+            FlickSpeed = 0.5,
+        },
+        
+        AutoFire = {
+            Enabled = true,
+            Key = Enum.KeyCode.F,
+            Active = false,
+            Delay = 0.05,
+            LastShot = 0,
+            RequireAim = false,
+        },
+        
+        ESP = {
+            Enabled = true,
+            Box = true,
+            BoxFilled = true,
+            BoxColor = Color3.fromRGB(255, 0, 80),
+            BoxFilledColor = Color3.fromRGB(255, 0, 80),
+            BoxFilledTransparency = 0.15,
+            Line = true,
+            LineColor = Color3.fromRGB(255, 255, 255),
+            Name = true,
+            NameColor = Color3.fromRGB(255, 255, 255),
+            NameSize = 14,
+            Distance = true,
+            Health = true,
+            HealthBar = true,
+            Tracers = false,
+            TracerColor = Color3.fromRGB(255, 0, 80),
+            MaxDistance = 2000,
+        },
+        
+        XRay = {
+            Enabled = true,
+            Key = Enum.KeyCode.X,
+            Active = true,
+            WallTransparency = 0.3,
+            EnemyHighlightColor = Color3.fromRGB(255, 0, 0),
+            EnemyOutlineColor = Color3.fromRGB(255, 255, 0),
+        },
+        
+        FOV = {
+            Visible = true,
+            Color = Color3.fromRGB(255, 255, 255),
+            Transparency = 0.5,
+            Thickness = 1,
+        }
+    }
+    
+    --// VARIABLES
+    local ESPObjects = {}
+    local AimTarget = nil
+    local FOV_Circle = nil
+    local XRayHighlights = {}
+    local XRayConnections = {}
+    
+    --// UTILITY FUNCTIONS
+    local function GetCharacter(player)
+        return player.Character
+    end
+    
+    local function GetHumanoid(character)
+        return character:FindFirstChildOfClass("Humanoid")
+    end
+    
+    local function GetHead(character)
+        return character:FindFirstChild(Config.Aimbot.TargetPart) or character:FindFirstChild("Head")
+    end
+    
+    local function GetTorso(character)
+        return character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+    end
+    
+    local function IsAlive(character)
+        local humanoid = GetHumanoid(character)
+        return humanoid and humanoid.Health > 0
+    end
+    
+    local function IsTeammate(player)
+        if not Config.Aimbot.TeamCheck then return false end
+        return player.Team == LocalPlayer.Team
+    end
+    
+    local function IsVisible(target, part)
+        if not Config.Aimbot.WallCheck then return true end
+        local origin = Camera.CFrame.Position
+        local direction = (part.Position - origin).Unit * (part.Position - origin).Magnitude
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        local result = Workspace:Raycast(origin, direction, raycastParams)
+        return result == nil or result.Instance:IsDescendantOf(target.Character)
+    end
+    
+    local function GetClosestPlayer()
+        local closest = nil
+        local shortestDistance = Config.Aimbot.FOV
+        
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            if IsTeammate(player) then continue end
+            
+            local character = GetCharacter(player)
+            if not character then continue end
+            if not IsAlive(character) then continue end
+            
+            local head = GetHead(character)
+            if not head then continue end
+            
+            local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+            if not onScreen then continue end
+            
+            local distance = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+            if distance < shortestDistance then
+                if IsVisible(player, head) then
+                    shortestDistance = distance
+                    closest = player
+                end
+            end
+        end
+        
+        return closest
+    end
+    
+    local function GetPredictedPosition(target)
+        local character = GetCharacter(target)
+        if not character then return nil end
+        
+        local head = GetHead(character)
+        if not head then return nil end
+        
+        local humanoid = GetHumanoid(character)
+        if not humanoid then return head.Position end
+        
+        local velocity = humanoid.MoveDirection * humanoid.WalkSpeed
+        return head.Position + (velocity * Config.Aimbot.Prediction)
+    end
+    
+    --// X-RAY WALLHACK SYSTEM
+    local function SetupXRay()
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(LocalPlayer.Character) then
+                if obj.Name:lower():match("wall") or obj.Name:lower():match("door") or obj.Name:lower():match("barrier") or obj.Name:lower():match("cover") then
+                    local originalTransparency = obj:GetAttribute("OriginalTransparency")
+                    if not originalTransparency then
+                        obj:SetAttribute("OriginalTransparency", obj.Transparency)
+                    end
+                    if Config.XRay.Active then
+                        obj.Transparency = Config.XRay.WallTransparency
+                        obj.CanCollide = true
+                    else
+                        obj.Transparency = obj:GetAttribute("OriginalTransparency") or 0
+                    end
+                end
+            end
+        end
+    end
+    
+    local function UpdateXRayHighlights()
+        for _, highlight in pairs(XRayHighlights) do
+            if highlight then highlight:Destroy() end
+        end
+        XRayHighlights = {}
+        
+        if not Config.XRay.Active then return end
+        
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            if IsTeammate(player) then continue end
+            
+            local character = GetCharacter(player)
+            if not character then continue end
+            if not IsAlive(character) then continue end
+            
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local highlight = Instance.new("Highlight")
+                    highlight.Name = "NanoXyinXRay"
+                    highlight.Adornee = part
+                    highlight.FillColor = Config.XRay.EnemyHighlightColor
+                    highlight.OutlineColor = Config.XRay.EnemyOutlineColor
+                    highlight.FillTransparency = 0.5
+                    highlight.OutlineTransparency = 0
+                    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    highlight.Parent = part
+                    table.insert(XRayHighlights, highlight)
+                end
+            end
+        end
+    end
+    
+    local function ToggleXRay()
+        Config.XRay.Active = not Config.XRay.Active
+        SetupXRay()
+        UpdateXRayHighlights()
+    end
+    
+    --// FOV CIRCLE
+    local function CreateFOVCircle()
+        FOV_Circle = Drawing.new("Circle")
+        FOV_Circle.Visible = Config.FOV.Visible
+        FOV_Circle.Color = Config.FOV.Color
+        FOV_Circle.Transparency = Config.FOV.Transparency
+        FOV_Circle.Thickness = Config.FOV.Thickness
+        FOV_Circle.Filled = false
+        FOV_Circle.NumSides = 64
+        FOV_Circle.Radius = Config.Aimbot.FOV
+    end
+    
+    CreateFOVCircle()
+    
+    --// ESP SYSTEM
+    local function CreateESP(player)
+        local esp = {
+            Box = Drawing.new("Square"),
+            BoxFill = Drawing.new("Square"),
+            Line = Drawing.new("Line"),
+            Name = Drawing.new("Text"),
+            Distance = Drawing.new("Text"),
+            HealthBar = Drawing.new("Square"),
+            HealthBarBG = Drawing.new("Square"),
+            Tracer = Drawing.new("Line"),
+        }
+        
+        esp.Box.Thickness = 1
+        esp.Box.Color = Config.ESP.BoxColor
+        esp.Box.Transparency = 1
+        esp.Box.Filled = false
+        esp.Box.Visible = false
+        
+        esp.BoxFill.Color = Config.ESP.BoxFilledColor
+        esp.BoxFill.Transparency = Config.ESP.BoxFilledTransparency
+        esp.BoxFill.Filled = true
+        esp.BoxFill.Visible = false
+        
+        esp.Line.Thickness = 1
+        esp.Line.Color = Config.ESP.LineColor
+        esp.Line.Visible = false
+        
+        esp.Name.Size = Config.ESP.NameSize
+        esp.Name.Center = true
+        esp.Name.Outline = true
+        esp.Name.Color = Config.ESP.NameColor
+        esp.Name.Visible = false
+        
+        esp.Distance.Size = 12
+        esp.Distance.Center = true
+        esp.Distance.Outline = true
+        esp.Distance.Color = Color3.fromRGB(255, 255, 255)
+        esp.Distance.Visible = false
+        
+        esp.HealthBarBG.Thickness = 1
+        esp.HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
+        esp.HealthBarBG.Filled = true
+        esp.HealthBarBG.Visible = false
+        
+        esp.HealthBar.Thickness = 1
+        esp.HealthBar.Filled = true
+        esp.HealthBar.Visible = false
+        
+        esp.Tracer.Thickness = 1
+        esp.Tracer.Color = Config.ESP.TracerColor
+        esp.Tracer.Visible = false
+        
+        ESPObjects[player] = esp
+        return esp
+    end
+    
+    local function RemoveESP(player)
+        local esp = ESPObjects[player]
+        if not esp then return end
+        
+        for _, obj in pairs(esp) do
+            if obj then obj:Remove() end
+        end
+        
+        ESPObjects[player] = nil
+    end
+    
+    local function UpdateESP()
+        for player, esp in pairs(ESPObjects) do
+            local character = GetCharacter(player)
+            
+            if not character or not IsAlive(character) or player == LocalPlayer or (Config.Aimbot.TeamCheck and IsTeammate(player)) then
+                for _, obj in pairs(esp) do
+                    if obj then obj.Visible = false end
+                end
+                continue
+            end
+            
+            local humanoid = GetHumanoid(character)
+            local head = character:FindFirstChild("Head")
+            local root = character:FindFirstChild("HumanoidRootPart")
+            
+            if not head or not root or not humanoid then
+                for _, obj in pairs(esp) do
+                    if obj then obj.Visible = false end
+                end
+                continue
+            end
+            
+            local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+            local rootPos, rootOnScreen = Camera:WorldToViewportPoint(root.Position)
+            
+            if not headOnScreen or not rootOnScreen then
+                for _, obj in pairs(esp) do
+                    if obj then obj.Visible = false end
+                end
+                continue
+            end
+            
+            local distance = (root.Position - Camera.CFrame.Position).Magnitude
+            if distance > Config.ESP.MaxDistance then
+                for _, obj in pairs(esp) do
+                    if obj then obj.Visible = false end
+                end
+                continue
+            end
+            
+            local boxHeight = math.abs(headPos.Y - rootPos.Y) * 2.5
+            local boxWidth = boxHeight * 0.6
+            local boxPosition = Vector2.new(rootPos.X - boxWidth / 2, rootPos.Y - boxHeight / 2)
+            
+            if Config.ESP.Box then
+                esp.Box.Size = Vector2.new(boxWidth, boxHeight)
+                esp.Box.Position = boxPosition
+                esp.Box.Visible = true
+                
+                if Config.ESP.BoxFilled then
+                    esp.BoxFill.Size = Vector2.new(boxWidth, boxHeight)
+                    esp.BoxFill.Position = boxPosition
+                    esp.BoxFill.Visible = true
+                else
+                    esp.BoxFill.Visible = false
+                end
+            else
+                esp.Box.Visible = false
+                esp.BoxFill.Visible = false
+            end
+            
+            if Config.ESP.Line then
+                esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                esp.Line.To = Vector2.new(rootPos.X, rootPos.Y)
+                esp.Line.Visible = true
+            else
+                esp.Line.Visible = false
+            end
+            
+            if Config.ESP.Name then
+                esp.Name.Position = Vector2.new(rootPos.X, boxPosition.Y - 20)
+                esp.Name.Text = player.Name
+                esp.Name.Visible = true
+            else
+                esp.Name.Visible = false
+            end
+            
+            if Config.ESP.Distance then
+                esp.Distance.Position = Vector2.new(rootPos.X, boxPosition.Y + boxHeight + 5)
+                esp.Distance.Text = math.floor(distance) .. "m"
+                esp.Distance.Visible = true
+            else
+                esp.Distance.Visible = false
+            end
+            
+            if Config.ESP.HealthBar then
+                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                local barHeight = boxHeight * healthPercent
+                
+                esp.HealthBarBG.Size = Vector2.new(4, boxHeight)
+                esp.HealthBarBG.Position = Vector2.new(boxPosition.X - 8, boxPosition.Y)
+                esp.HealthBarBG.Visible = true
+                
+                esp.HealthBar.Size = Vector2.new(4, barHeight)
+                esp.HealthBar.Position = Vector2.new(boxPosition.X - 8, boxPosition.Y + (boxHeight - barHeight))
+                esp.HealthBar.Color = Color3.fromRGB(255 * (1 - healthPercent), 255 * healthPercent, 0)
+                esp.HealthBar.Visible = true
+            else
+                esp.HealthBar.Visible = false
+                esp.HealthBarBG.Visible = false
+            end
+            
+            if Config.ESP.Tracers then
+                esp.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                esp.Tracer.To = Vector2.new(rootPos.X, rootPos.Y)
+                esp.Tracer.Visible = true
+            else
+                esp.Tracer.Visible = false
+            end
+        end
+    end
+    
+    --// FLICK AIMBOT + AUTO-FIRE
+    local function FlickAimbot()
+        if not Config.Aimbot.Enabled then return end
+        
+        if UserInputService:IsMouseButtonPressed(Config.Aimbot.Key) then
+            if not AimTarget then
+                AimTarget = GetClosestPlayer()
+            end
+            
+            if AimTarget then
+                local character = GetCharacter(AimTarget)
+                if not character or not IsAlive(character) then
+                    AimTarget = nil
+                    return
+                end
+                
+                local predictedPos = GetPredictedPosition(AimTarget)
+                if not predictedPos then
+                    AimTarget = nil
+                    return
+                end
+                
+                local screenPos = Camera:WorldToViewportPoint(predictedPos)
+                local mousePos = UserInputService:GetMouseLocation()
+                local targetPos = Vector2.new(screenPos.X, screenPos.Y)
+                
+                local smoothness = Config.Aimbot.FlickMode and Config.Aimbot.FlickSpeed or Config.Aimbot.Smoothness
+                local moveVector = (targetPos - mousePos) * smoothness
+                mousemoverel(moveVector.X, moveVector.Y)
+                
+                if Config.AutoFire.Enabled and Config.AutoFire.Active then
+                    local currentTime = tick()
+                    if currentTime - Config.AutoFire.LastShot >= Config.AutoFire.Delay then
+                        if not Config.AutoFire.RequireAim or (Config.AutoFire.RequireAim and AimTarget) then
+                            local distToTarget = (targetPos - mousePos).Magnitude
+                            if distToTarget < 20 then
+                                mouse1click()
+                                Config.AutoFire.LastShot = currentTime
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            AimTarget = nil
+        end
+    end
+    
+    --// INPUT HANDLING
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.KeyCode == Config.AutoFire.Key then
+            Config.AutoFire.Active = not Config.AutoFire.Active
+            
+            local notif = Instance.new("TextLabel")
+            notif.Size = UDim2.new(0, 200, 0, 40)
+            notif.Position = UDim2.new(0.5, -100, 0.1, 0)
+            notif.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+            notif.TextColor3 = Config.AutoFire.Active and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+            notif.Text = "Auto-Fire: " .. (Config.AutoFire.Active and "ON" or "OFF")
+            notif.TextSize = 18
+            notif.Font = Enum.Font.GothamBold
+            notif.Parent = game.CoreGui
+            notif.BorderSizePixel = 0
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = notif
+            
+            TweenService:Create(notif, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0.15, 0)}):Play()
+            wait(2)
+            TweenService:Create(notif, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0, -50)}):Play()
+            wait(0.6)
+            notif:Destroy()
+        end
+        
+        if input.KeyCode == Config.XRay.Key then
+            ToggleXRay()
+            
+            local notif = Instance.new("TextLabel")
+            notif.Size = UDim2.new(0, 200, 0, 40)
+            notif.Position = UDim2.new(0.5, -100, 0.1, 0)
+            notif.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+            notif.TextColor3 = Config.XRay.Active and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+            notif.Text = "X-Ray: " .. (Config.XRay.Active and "ON" or "OFF")
+            notif.TextSize = 18
+            notif.Font = Enum.Font.GothamBold
+            notif.Parent = game.CoreGui
+            notif.BorderSizePixel = 0
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = notif
+            
+            TweenService:Create(notif, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0.15, 0)}):Play()
+            wait(2)
+            TweenService:Create(notif, TweenInfo.new(0.5), {Position = UDim2.new(0.5, -100, 0, -50)}):Play()
+            wait(0.6)
+            notif:Destroy()
+        end
+    end)
+    
+    --// MAIN LOOP
+    RunService.RenderStepped:Connect(function()
+        if FOV_Circle then
+            FOV_Circle.Position = UserInputService:GetMouseLocation()
+            FOV_Circle.Radius = Config.Aimbot.FOV
+            FOV_Circle.Visible = Config.FOV.Visible and Config.Aimbot.Enabled
+        end
+        
+        if Config.ESP.Enabled then
+            for player in pairs(ESPObjects) do
+                if not player.Parent then
+                    RemoveESP(player)
+                end
+            end
+            
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and not ESPObjects[player] then
+                    CreateESP(player)
+                end
+            end
+            
+            UpdateESP()
+        end
+        
+        if Config.XRay.Active then
+            UpdateXRayHighlights()
+        end
+        
+        FlickAimbot()
+    end)
+    
+    --// PLAYER ADDED/REMOVED
+    Players.PlayerAdded:Connect(function(player)
+        if player ~= LocalPlayer and Config.ESP.Enabled then
+            CreateESP(player)
+        end
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveESP(player)
+    end)
+    
+    --// INITIAL SETUP
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            CreateESP(player)
+        end
+    end
+    
+    SetupXRay()
+    UpdateXRayHighlights()
+    
+    print("NANOXYIN v2.0 | SCRIPT BY XYIN | Loaded successfully")
+    print("Right Click = Flick Aimbot | F = Toggle Auto-Fire | X = Toggle X-Ray")
+    print("ESP Active | FOV Lock Ready | X-Ray Wallhack Ready")
+end
+
+--// EXECUTE
+LoadOriginal()
