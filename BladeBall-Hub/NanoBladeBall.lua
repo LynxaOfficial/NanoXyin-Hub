@@ -1,330 +1,255 @@
 --[[
     ============================================
-    NANOXYIN BLADE BALL v11.0 - DELTA ULTIMATE
-    Modular Architecture | Executor-Safe | BAC Defense
-    Compatible: Delta v2+, Synapse X, Krnl, Fluxus
+    NANOXYIN BLADE BALL v13.0 - MESIN KERJA
+    Hanya Fitur WORK & Sering Dipakai
+    Toggle: Aktif = Hijau | Nonaktif = Merah
     ============================================
 ]]
 
 --// ============================================
---// MODULE 0: EXECUTOR DETECTION & SAFETY
+--// DEFENSE: NATIVE REPLACEMENT (NO HOOK)
 --// ============================================
 
-local NX = {}
-NX.Version = "11.0"
-NX.Status = "Initializing"
-NX.Executor = "Unknown"
-NX.IsReady = false
+local _game = game
+local _tick = tick
+local _pcall = pcall
+local _type = type
+local _tostring = tostring
+local _math = math
+local _string = string
+local _table = table
+local _wait = task.wait
+local _spawn = task.spawn
+local _delay = task.delay
 
-local function DetectExecutor()
-    if syn and syn.protect_gui then
-        return "Synapse X"
-    elseif gethui and not syn then
-        return "Delta"
-    elseif KRNL_LOADED then
-        return "Krnl"
-    elseif fluxus and fluxus.request then
-        return "Fluxus"
-    elseif Codex and Codex.request then
-        return "Codex"
-    elseif electron and electron.request then
-        return "Electron"
-    elseif getexecutorname then
-        return getexecutorname()
-    elseif identifyexecutor then
-        return identifyexecutor()
-    end
-    return "Unknown"
-end
+_math.randomseed(_tick() * 1000000)
 
-NX.Executor = DetectExecutor()
-
--- Safety wrapper
-local function SafeCall(func, ...)
-    local success, result = pcall(func, ...)
-    if not success then
-        warn("[NanoXyin] Error: " .. tostring(result))
-    end
-    return success, result
-end
-
---// ============================================
---// MODULE 1: SERVICES & VARIABLES
---// ============================================
-
-local Services = {}
-local Players, RunService, UserInputService, TweenService
-local HttpService, ReplicatedStorage, VirtualUser, CoreGui
-local Lighting, TeleportService, Stats, CollectionService
-
-SafeCall(function()
-    Players = game:GetService("Players")
-    RunService = game:GetService("RunService")
-    UserInputService = game:GetService("UserInputService")
-    TweenService = game:GetService("TweenService")
-    HttpService = game:GetService("HttpService")
-    ReplicatedStorage = game:GetService("ReplicatedStorage")
-    VirtualUser = game:GetService("VirtualUser")
-    CoreGui = game:GetService("CoreGui")
-    Lighting = game:GetService("Lighting")
-    TeleportService = game:GetService("TeleportService")
-    Stats = game:GetService("Stats")
-    CollectionService = game:GetService("CollectionService")
-end)
-
-if not Players then
-    warn("[NanoXyin] Failed to load services")
-    return
-end
+-- Services
+local Players = _game:GetService("Players")
+local RunService = _game:GetService("RunService")
+local UserInputService = _game:GetService("UserInputService")
+local TweenService = _game:GetService("TweenService")
+local ReplicatedStorage = _game:GetService("ReplicatedStorage")
+local VirtualUser = _game:GetService("VirtualUser")
+local CoreGui = _game:GetService("CoreGui")
+local Stats = _game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
-if not LocalPlayer or not Camera then
-    warn("[NanoXyin] LocalPlayer or Camera not found")
+if not LocalPlayer or not Camera then return end
+
+-- Anti-kick native replacement
+LocalPlayer.Kick = function(self, ...)
+    if self == LocalPlayer then return nil end
+    return game.Players.LocalPlayer.Kick(self, ...)
+end
+
+-- Anti-destroy
+LocalPlayer.Destroy = function(self, ...)
+    if self == LocalPlayer then return nil end
+    return Instance.new("Part").Destroy(self, ...)
+end
+
+-- Remote interception
+local BlockedNames = {"anticheat", "ac_", "detect", "report", "log", "telemetry", "tracking", "ban", "kick"}
+
+local function IsBlocked(name)
+    name = name:lower()
+    for _, blocked in ipairs(BlockedNames) do
+        if string.find(name, blocked) then return true end
+    end
+    return false
+end
+
+_spawn(function()
+    _wait(1)
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local orig = obj.FireServer
+            obj.FireServer = function(self, ...)
+                if IsBlocked(tostring(self)) then return nil end
+                return orig(self, ...)
+            end
+        elseif obj:IsA("RemoteFunction") then
+            local orig = obj.InvokeServer
+            obj.InvokeServer = function(self, ...)
+                if IsBlocked(tostring(self)) then return nil end
+                return orig(self, ...)
+            end
+        end
+    end
+end)
+
+-- Executor spoof
+local checks = {"getexecutorname", "identifyexecutor", "is_synapse_function", "is_krnl_function", "is_fluxus_function"}
+for _, check in ipairs(checks) do
+    if getfenv(0)[check] then
+        getfenv(0)[check] = function() return "RobloxStudio" end
+    end
+end
+
+-- GC manipulation
+_spawn(function()
+    while true do
+        _wait(5)
+        local gc = getgc and getgc() or {}
+        for i = 1, math.min(#gc, 30) do
+            local obj = gc[math.random(1, #gc)]
+            if type(obj) == "function" then
+                local info = debug.getinfo(obj)
+                if info and info.source then
+                    local src = info.source:lower()
+                    if string.find(src, "anticheat") or string.find(src, "security") then
+                        local upvalues = debug.getupvalues(obj)
+                        for j = 1, #upvalues do
+                            if type(upvalues[j]) == "boolean" then
+                                pcall(function() debug.setupvalue(obj, j, false) end)
+                            elseif type(upvalues[j]) == "number" then
+                                pcall(function() debug.setupvalue(obj, j, 0) end)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+--// ============================================
+--// GAME DETECTION
+--// ============================================
+
+local GameData = {
+    CurrentBall = nil,
+    ParryRemote = nil,
+    BallFolder = nil
+}
+
+local function DetectGame()
+    local places = {[13772394625]=true,[14775231477]=true,[15131069922]=true,[15931185932]=true,[17018663927]=true,[17219476303]=true}
+
+    local isBB = places[game.PlaceId] or false
+
+    local bf = workspace:FindFirstChild("Balls") or workspace:FindFirstChild("BallFolder") or workspace:FindFirstChild("ActiveBalls")
+    if bf then
+        GameData.BallFolder = bf
+        isBB = true
+    end
+
+    if not isBB then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Name:lower():find("ball") and obj.Velocity.Magnitude > 0 then
+                GameData.CurrentBall = obj
+                isBB = true
+                break
+            end
+        end
+    end
+
+    return isBB
+end
+
+if not DetectGame() then
+    warn("[NanoXyin] Blade Ball not detected")
     return
 end
 
---// ============================================
---// MODULE 2: ANTI-CHEAT BYPASS (DELTA SAFE)
---// ============================================
-
-local Bypass = {}
-Bypass.Active = false
-Bypass.Hooks = {}
-
-function Bypass:Initialize()
-    SafeCall(function()
-        local mt = getrawmetatable(game)
-        if not mt then return end
-
-        setreadonly(mt, false)
-
-        -- Namecall hook
-        local oldNamecall = mt.__namecall
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-
-            if method == "Kick" then
-                return nil
-            end
-
-            if method == "Destroy" and (self == LocalPlayer or self == LocalPlayer.Character) then
-                return nil
-            end
-
-            if method == "FireServer" then
-                local name = tostring(self):lower()
-                if name:find("anticheat") or name:find("ac_") or name:find("detect") or name:find("report") then
-                    return nil
-                end
-            end
-
-            return oldNamecall(self, ...)
-        end)
-
-        -- Index hook
-        local oldIndex = mt.__index
-        mt.__index = newcclosure(function(self, key)
-            if self == LocalPlayer and (key == "Kick" or key == "Destroy") then
-                return function() return nil end
-            end
-            return oldIndex(self, key)
-        end)
-
-        setreadonly(mt, true)
-        Bypass.Active = true
-    end)
-
-    -- Hook kick function
-    SafeCall(function()
-        local oldKick = LocalPlayer.Kick
-        LocalPlayer.Kick = function(...) 
-            warn("[NanoXyin] Kick blocked")
-            return nil 
-        end
-    end)
-
-    -- Spoof executor detection
-    SafeCall(function()
-        local checks = {"getexecutorname", "identifyexecutor", "is_synapse_function", "is_krnl_function"}
-        for _, check in pairs(checks) do
-            if _G[check] then
-                _G[check] = function() return "RobloxStudio" end
+-- Find remotes
+_spawn(function()
+    _wait(1)
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = obj.Name:lower()
+            if name:find("parry") or name:find("deflect") or name:find("block") then
+                GameData.ParryRemote = obj
             end
         end
+    end
+end)
+
+-- Ball monitoring
+if GameData.BallFolder then
+    GameData.BallFolder.ChildAdded:Connect(function(child)
+        if child:IsA("BasePart") then GameData.CurrentBall = child end
     end)
+    GameData.BallFolder.ChildRemoved:Connect(function(child)
+        if GameData.CurrentBall == child then GameData.CurrentBall = nil end
+    end)
+    for _, child in ipairs(GameData.BallFolder:GetChildren()) do
+        if child:IsA("BasePart") then GameData.CurrentBall = child break end
+    end
 end
 
 --// ============================================
---// MODULE 3: GAME DETECTION
+--// CONFIG (HANYA FITUR YANG SERING DIPAKAI)
 --// ============================================
 
-local Game = {}
-Game.Name = "Unknown"
-Game.BallFolder = nil
-Game.CurrentBall = nil
-Game.ParryRemote = nil
-Game.AbilityRemote = nil
-Game.IsBladeBall = false
+local Config = {
+    -- COMBAT (CORE)
+    AutoParry = true,
+    AutoParryDistance = 25,
+    AutoParryReaction = 0.12,
+    AutoSpam = false,
+    SpamInterval = 0.05,
 
-function Game:Detect()
-    SafeCall(function()
-        local places = {
-            [13772394625] = "Blade Ball",
-            [14775231477] = "Blade Ball",
-            [15131069922] = "Blade Ball",
-            [15931185932] = "Blade Ball",
-            [17018663927] = "Blade Ball",
-            [17219476303] = "Blade Ball"
-        }
+    -- AIM
+    LockFOV = true,
+    FOVSize = 150,
+    ShowFOV = true,
 
-        if places[game.PlaceId] then
-            Game.Name = places[game.PlaceId]
-            Game.IsBladeBall = true
-        end
+    -- VISUAL
+    ESP = true,
+    ESPColor = Color3.fromRGB(255, 0, 0),
+    BallESP = true,
+    RainbowMode = false,
 
-        -- Fallback detection
-        local ballFolder = workspace:FindFirstChild("Balls") or workspace:FindFirstChild("BallFolder") or workspace:FindFirstChild("ActiveBalls")
-        if ballFolder then
-            Game.BallFolder = ballFolder
-            Game.IsBladeBall = true
-        end
+    -- MOVEMENT
+    WalkSpeed = 16,
+    JumpPower = 50,
+    InfiniteJump = false,
+    AntiAFK = true,
 
-        -- Deep search for ball
-        if not Game.IsBladeBall then
-            for _, obj in pairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") and obj.Name:lower():find("ball") then
-                    if obj.Velocity.Magnitude > 0 or obj:FindFirstChild("BodyVelocity") then
-                        Game.CurrentBall = obj
-                        Game.IsBladeBall = true
-                        break
-                    end
-                end
-            end
-        end
-    end)
-end
-
-function Game:SetupConnections()
-    SafeCall(function()
-        -- Find remotes
-        local function scanRemotes(parent)
-            for _, obj in pairs(parent:GetDescendants()) do
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                    local name = obj.Name:lower()
-                    if name:find("parry") or name:find("deflect") or name:find("block") or name:find("hit") then
-                        Game.ParryRemote = obj
-                    elseif name:find("ability") or name:find("skill") or name:find("power") then
-                        Game.AbilityRemote = obj
-                    end
-                end
-            end
-        end
-
-        scanRemotes(ReplicatedStorage)
-        scanRemotes(workspace)
-
-        -- Monitor ball folder
-        if Game.BallFolder then
-            Game.BallFolder.ChildAdded:Connect(function(child)
-                if child:IsA("BasePart") then
-                    Game.CurrentBall = child
-                end
-            end)
-
-            Game.BallFolder.ChildRemoved:Connect(function(child)
-                if Game.CurrentBall == child then
-                    Game.CurrentBall = nil
-                end
-            end)
-
-            for _, child in pairs(Game.BallFolder:GetChildren()) do
-                if child:IsA("BasePart") then
-                    Game.CurrentBall = child
-                    break
-                end
-            end
-        end
-    end)
-end
+    -- DEFENSE
+    AutoDodge = true,
+    DodgeDistance = 15
+}
 
 --// ============================================
---// MODULE 4: CONFIGURATION
+--// MATH
 --// ============================================
 
-local Config = {}
-Config.AutoParry = true
-Config.AutoParryDistance = 25
-Config.AutoParryReaction = 0.12
-Config.LockFOV = true
-Config.FOVSize = 150
-Config.FOVColor = Color3.fromRGB(0, 255, 136)
-Config.ShowFOV = true
-Config.AutoSpam = false
-Config.SpamInterval = 0.05
-Config.ESP = true
-Config.ESPColor = Color3.fromRGB(255, 0, 0)
-Config.AutoAbility = true
-Config.AutoClash = true
-Config.NoCooldown = false
-Config.WalkSpeed = 16
-Config.JumpPower = 50
-Config.InfiniteJump = false
-Config.AntiAFK = true
-Config.AutoDodge = true
-Config.DodgeDistance = 15
-Config.BallESP = true
-Config.TrajectoryESP = true
-Config.RainbowMode = false
-Config.StreamerMode = false
-Config.VisualEffects = true
-Config.SoundEffects = true
-
---// ============================================
---// MODULE 5: MATH UTILITIES
---// ============================================
-
-local Math = {}
-
-function Math.Distance(p1, p2)
+local function Distance(p1, p2)
     return (p1 - p2).Magnitude
 end
 
-function Math.Lerp(a, b, t)
-    return a + (b - a) * t
-end
-
-function Math.Clamp(v, mn, mx)
+local function Clamp(v, mn, mx)
     return math.max(mn, math.min(mx, v))
 end
 
-function Math.Rainbow(t)
+local function Rainbow(t)
     return Color3.fromHSV((tick() * t) % 1, 1, 1)
 end
 
 --// ============================================
---// MODULE 6: BALL TRACKER
+--// BALL TRACKER (MESIN KERJA)
 --// ============================================
 
-local BallTracker = {}
-BallTracker.History = {}
-BallTracker.MaxHistory = 30
-BallTracker.Prediction = nil
-BallTracker.Confidence = 0
+local BallTracker = {
+    History = {},
+    MaxHistory = 30,
+    Prediction = nil,
+    Confidence = 0
+}
 
 function BallTracker:Update(ball)
     if not ball or not ball:IsA("BasePart") then return end
 
-    local currentTime = tick()
-    local position = ball.Position
-    local velocity = ball.Velocity
-
     table.insert(self.History, {
-        Time = currentTime,
-        Position = position,
-        Velocity = velocity,
-        Speed = velocity.Magnitude
+        Time = tick(),
+        Position = ball.Position,
+        Velocity = ball.Velocity,
+        Speed = ball.Velocity.Magnitude
     })
 
     if #self.History > self.MaxHistory then
@@ -333,20 +258,18 @@ function BallTracker:Update(ball)
 
     if #self.History >= 2 then
         local latest = self.History[#self.History]
-        local previous = self.History[#self.History - 1]
-        local dt = latest.Time - previous.Time
+        local prev = self.History[#self.History - 1]
+        local dt = latest.Time - prev.Time
 
         if dt > 0 then
-            local calculatedVel = (latest.Position - previous.Position) / dt
-            local playerPos = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position
-
-            if playerPos then
-                local distance = Math.Distance(latest.Position, playerPos)
-                local timeToImpact = distance / math.max(calculatedVel.Magnitude, 0.1)
-
-                if timeToImpact > 0 then
-                    self.Prediction = latest.Position + (calculatedVel * timeToImpact)
-                    self.Confidence = Math.Clamp(1 - (timeToImpact / 5), 0, 1)
+            local vel = (latest.Position - prev.Position) / dt
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local dist = Distance(latest.Position, hrp.Position)
+                local tti = dist / math.max(vel.Magnitude, 0.1)
+                if tti > 0 then
+                    self.Prediction = latest.Position + (vel * tti)
+                    self.Confidence = Clamp(1 - (tti / 5), 0, 1)
                 end
             end
         end
@@ -364,16 +287,17 @@ function BallTracker:Clear()
 end
 
 --// ============================================
---// MODULE 7: AUTO PARRY (WORKING)
+--// AUTO PARRY (MESIN KERJA)
 --// ============================================
 
-local AutoParry = {}
-AutoParry.Enabled = true
-AutoParry.LastParryTime = 0
-AutoParry.ParryCooldown = 0.08
-AutoParry.ParryRadius = 25
-AutoParry.ReactionTime = 0.12
-AutoParry.ParryCount = 0
+local AutoParry = {
+    LastParryTime = 0,
+    ParryCooldown = 0.08,
+    ParryRadius = 25,
+    ReactionTime = 0.12,
+    ParryCount = 0,
+    IsWorking = false
+}
 
 function AutoParry:CanParry()
     return tick() - self.LastParryTime >= self.ParryCooldown
@@ -382,29 +306,31 @@ end
 function AutoParry:ExecuteParry()
     if not self:CanParry() then return false end
 
+    self.IsWorking = true
     local success = false
 
-    -- Method 1: Direct remote
-    if Game.ParryRemote then
-        success = SafeCall(function()
-            Game.ParryRemote:FireServer(LocalPlayer, tick(), Camera.CFrame)
+    -- Method 1: Remote
+    if GameData.ParryRemote then
+        success = pcall(function()
+            GameData.ParryRemote:FireServer(LocalPlayer, tick(), Camera.CFrame, Vector3.new(0,0,0))
         end)
     end
 
     -- Method 2: Virtual user
     if not success then
-        success = SafeCall(function()
-            VirtualUser:Button1Down(Vector2.new(0, 0))
-            task.wait(0.01)
-            VirtualUser:Button1Up(Vector2.new(0, 0))
+        success = pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:Button1Down(Vector2.new(math.random(0,100), math.random(0,100)))
+            wait(0.01)
+            VirtualUser:Button1Up(Vector2.new(math.random(0,100), math.random(0,100)))
         end)
     end
 
     -- Method 3: Key press
     if not success then
-        success = SafeCall(function()
+        success = pcall(function()
             keypress(0x20)
-            task.wait(0.01)
+            wait(0.01)
             keyrelease(0x20)
         end)
     end
@@ -414,38 +340,40 @@ function AutoParry:ExecuteParry()
         self.ParryCount = self.ParryCount + 1
     end
 
+    delay(0.05, function()
+        self.IsWorking = false
+    end)
+
     return success
 end
 
 function AutoParry:CheckProximity()
-    local character = LocalPlayer.Character
-    if not character then return false end
+    local char = LocalPlayer.Character
+    if not char then return false end
 
-    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
-    local ball = Game.CurrentBall
+    local ball = GameData.CurrentBall
     if not ball or not ball:IsA("BasePart") then return false end
 
-    local distance = Math.Distance(ball.Position, hrp.Position)
-    local ballSpeed = ball.Velocity.Magnitude
+    local dist = Distance(ball.Position, hrp.Position)
+    local speed = ball.Velocity.Magnitude
 
     -- Prediction check
-    local prediction, confidence = BallTracker:GetPrediction()
-    if prediction and confidence > 0.6 then
-        local predDistance = Math.Distance(prediction, hrp.Position)
-        local timeToImpact = predDistance / math.max(ballSpeed, 0.1)
-
-        if timeToImpact <= self.ReactionTime and predDistance <= self.ParryRadius then
+    local pred, conf = BallTracker:GetPrediction()
+    if pred and conf > 0.6 then
+        local pd = Distance(pred, hrp.Position)
+        local tti = pd / math.max(speed, 0.1)
+        if tti <= self.ReactionTime and pd <= self.ParryRadius then
             return true
         end
     end
 
-    -- Fallback direct check
-    if distance <= self.ParryRadius and ballSpeed > 3 then
-        local direction = (hrp.Position - ball.Position).Unit
-        local dotProduct = ball.Velocity.Unit:Dot(direction)
-        if dotProduct > 0.3 then
+    -- Fallback
+    if dist <= self.ParryRadius and speed > 3 then
+        local dir = (hrp.Position - ball.Position).Unit
+        if ball.Velocity.Unit:Dot(dir) > 0.3 then
             return true
         end
     end
@@ -460,25 +388,58 @@ function AutoParry:Update()
         self:ExecuteParry()
     end
 
-    if Game.CurrentBall then
-        BallTracker:Update(Game.CurrentBall)
+    if GameData.CurrentBall then
+        BallTracker:Update(GameData.CurrentBall)
     end
 end
 
 --// ============================================
---// MODULE 8: FOV LOCK (WORKING)
+--// AUTO DODGE (MESIN KERJA)
 --// ============================================
 
-local FOVLock = {}
-FOVLock.Enabled = true
-FOVLock.Circle = nil
-FOVLock.Target = nil
-FOVLock.Smoothness = 0.08
+local AutoDodge = {
+    LastDodgeTime = 0,
+    DodgeCooldown = 0.5
+}
+
+function AutoDodge:Execute()
+    if tick() - self.LastDodgeTime < self.DodgeCooldown then return end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local ball = GameData.CurrentBall
+    if not ball then return end
+
+    local toPlayer = (hrp.Position - ball.Position).Unit
+    local dodgeDir = Vector3.new(-toPlayer.Z, 0, toPlayer.X).Unit
+    if math.random() > 0.5 then dodgeDir = -dodgeDir end
+
+    local dodgePos = hrp.Position + (dodgeDir * Config.DodgeDistance)
+
+    pcall(function()
+        TweenService:Create(hrp, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            CFrame = CFrame.new(dodgePos)
+        }):Play()
+    end)
+
+    self.LastDodgeTime = tick()
+end
+
+--// ============================================
+--// FOV LOCK (MESIN KERJA)
+--// ============================================
+
+local FOVLock = {
+    Circle = nil,
+    Smoothness = 0.08
+}
 
 function FOVLock:CreateCircle()
-    if self.Circle then
-        self.Circle:Remove()
-    end
+    if self.Circle then self.Circle:Remove() end
 
     self.Circle = Drawing.new("Circle")
     self.Circle.Visible = Config.ShowFOV
@@ -492,13 +453,11 @@ function FOVLock:CreateCircle()
 end
 
 function FOVLock:UpdateCircle()
-    if not self.Circle then
-        self:CreateCircle()
-    end
+    if not self.Circle then self:CreateCircle() end
 
     self.Circle.Visible = Config.ShowFOV
     self.Circle.Radius = Config.FOVSize
-    self.Circle.Color = Config.RainbowMode and Math.Rainbow(0.5) or Config.FOVColor
+    self.Circle.Color = Config.RainbowMode and Rainbow(0.5) or Config.FOVColor
     self.Circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 end
 
@@ -507,30 +466,29 @@ function FOVLock:GetTarget()
     local closestDist = math.huge
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
-    for _, player in pairs(Players:GetPlayers()) do
+    for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
         if not player.Character then continue end
 
         local hrp = player.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then continue end
 
-        local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        local sp, onScreen = Camera:WorldToViewportPoint(hrp.Position)
         if not onScreen then continue end
 
-        local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-        if dist <= Config.FOVSize and dist < closestDist then
-            closestDist = dist
+        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if d <= Config.FOVSize and d < closestDist then
+            closestDist = d
             closest = player
         end
     end
 
-    -- Check ball
-    if Game.CurrentBall then
-        local ballScreen, onScreen = Camera:WorldToViewportPoint(Game.CurrentBall.Position)
+    if GameData.CurrentBall then
+        local bs, onScreen = Camera:WorldToViewportPoint(GameData.CurrentBall.Position)
         if onScreen then
-            local dist = (Vector2.new(ballScreen.X, ballScreen.Y) - center).Magnitude
-            if dist <= Config.FOVSize and dist < closestDist then
-                closest = Game.CurrentBall
+            local d = (Vector2.new(bs.X, bs.Y) - center).Magnitude
+            if d <= Config.FOVSize and d < closestDist then
+                closest = GameData.CurrentBall
             end
         end
     end
@@ -555,69 +513,56 @@ function FOVLock:LockOn()
 
     if not targetPos then return end
 
-    local currentCF = Camera.CFrame
-    local targetDir = (targetPos - currentCF.Position).Unit
-    local targetCF = CFrame.new(currentCF.Position, currentCF.Position + targetDir)
-
-    Camera.CFrame = currentCF:Lerp(targetCF, self.Smoothness)
+    local cf = Camera.CFrame
+    local dir = (targetPos - cf.Position).Unit
+    Camera.CFrame = cf:Lerp(CFrame.new(cf.Position, cf.Position + dir), self.Smoothness)
 end
 
 --// ============================================
---// MODULE 9: ESP SYSTEM (WORKING)
+--// ESP (MESIN KERJA)
 --// ============================================
 
-local ESP = {}
-ESP.Boxes = {}
-ESP.Names = {}
-ESP.Tracers = {}
-ESP.HealthBars = {}
-ESP.DistanceLabels = {}
+local ESP = {
+    Boxes = {},
+    Names = {},
+    Tracers = {},
+    HealthBars = {},
+    BallCircle = nil,
+    BallInfo = nil
+}
 
 function ESP:AddPlayer(player)
     if player == LocalPlayer then return end
 
-    local box = Drawing.new("Square")
-    box.Visible = false
-    box.Thickness = 1
-    box.Filled = false
-    box.Color = Config.ESPColor
-    box.Transparency = 0.7
+    ESP.Boxes[player] = Drawing.new("Square")
+    ESP.Boxes[player].Visible = false
+    ESP.Boxes[player].Thickness = 1
+    ESP.Boxes[player].Filled = false
+    ESP.Boxes[player].Color = Config.ESPColor
+    ESP.Boxes[player].Transparency = 0.7
 
-    local name = Drawing.new("Text")
-    name.Visible = false
-    name.Size = 14
-    name.Center = true
-    name.Outline = true
-    name.Color = Color3.new(1, 1, 1)
+    ESP.Names[player] = Drawing.new("Text")
+    ESP.Names[player].Visible = false
+    ESP.Names[player].Size = 14
+    ESP.Names[player].Center = true
+    ESP.Names[player].Outline = true
+    ESP.Names[player].Color = Color3.new(1, 1, 1)
 
-    local tracer = Drawing.new("Line")
-    tracer.Visible = false
-    tracer.Thickness = 1
-    tracer.Color = Config.ESPColor
-    tracer.Transparency = 0.5
+    ESP.Tracers[player] = Drawing.new("Line")
+    ESP.Tracers[player].Visible = false
+    ESP.Tracers[player].Thickness = 1
+    ESP.Tracers[player].Color = Config.ESPColor
+    ESP.Tracers[player].Transparency = 0.5
 
-    local healthBar = Drawing.new("Square")
-    healthBar.Visible = false
-    healthBar.Thickness = 1
-    healthBar.Filled = true
-    healthBar.Color = Color3.fromRGB(0, 255, 0)
-
-    local distance = Drawing.new("Text")
-    distance.Visible = false
-    distance.Size = 12
-    distance.Center = true
-    distance.Outline = true
-    distance.Color = Color3.new(1, 1, 1)
-
-    self.Boxes[player] = box
-    self.Names[player] = name
-    self.Tracers[player] = tracer
-    self.HealthBars[player] = healthBar
-    self.DistanceLabels[player] = distance
+    ESP.HealthBars[player] = Drawing.new("Square")
+    ESP.HealthBars[player].Visible = false
+    ESP.HealthBars[player].Thickness = 1
+    ESP.HealthBars[player].Filled = true
+    ESP.HealthBars[player].Color = Color3.fromRGB(0, 255, 0)
 end
 
 function ESP:RemovePlayer(player)
-    for _, container in pairs({self.Boxes, self.Names, self.Tracers, self.HealthBars, self.DistanceLabels}) do
+    for _, container in ipairs({ESP.Boxes, ESP.Names, ESP.Tracers, ESP.HealthBars}) do
         if container[player] then
             container[player]:Remove()
             container[player] = nil
@@ -625,28 +570,26 @@ function ESP:RemovePlayer(player)
     end
 end
 
-function ESP:Update()
+function ESP:UpdatePlayers()
     if not Config.ESP then
-        for _, drawing in pairs(self.Boxes) do drawing.Visible = false end
-        for _, drawing in pairs(self.Names) do drawing.Visible = false end
-        for _, drawing in pairs(self.Tracers) do drawing.Visible = false end
-        for _, drawing in pairs(self.HealthBars) do drawing.Visible = false end
-        for _, drawing in pairs(self.DistanceLabels) do drawing.Visible = false end
+        for _, d in pairs(ESP.Boxes) do d.Visible = false end
+        for _, d in pairs(ESP.Names) do d.Visible = false end
+        for _, d in pairs(ESP.Tracers) do d.Visible = false end
+        for _, d in pairs(ESP.HealthBars) do d.Visible = false end
         return
     end
 
-    for player, box in pairs(self.Boxes) do
+    for player, box in pairs(ESP.Boxes) do
         if not player or not player.Parent then
-            self:RemovePlayer(player)
+            ESP:RemovePlayer(player)
             continue
         end
 
         if not player.Character then
             box.Visible = false
-            self.Names[player].Visible = false
-            self.Tracers[player].Visible = false
-            self.HealthBars[player].Visible = false
-            self.DistanceLabels[player].Visible = false
+            ESP.Names[player].Visible = false
+            ESP.Tracers[player].Visible = false
+            ESP.HealthBars[player].Visible = false
             continue
         end
 
@@ -656,105 +599,148 @@ function ESP:Update()
 
         if not hrp or not head or not humanoid then
             box.Visible = false
-            self.Names[player].Visible = false
-            self.Tracers[player].Visible = false
-            self.HealthBars[player].Visible = false
-            self.DistanceLabels[player].Visible = false
+            ESP.Names[player].Visible = false
+            ESP.Tracers[player].Visible = false
+            ESP.HealthBars[player].Visible = false
             continue
         end
 
         local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
         if not onScreen then
             box.Visible = false
-            self.Names[player].Visible = false
-            self.Tracers[player].Visible = false
-            self.HealthBars[player].Visible = false
-            self.DistanceLabels[player].Visible = false
+            ESP.Names[player].Visible = false
+            ESP.Tracers[player].Visible = false
+            ESP.HealthBars[player].Visible = false
             continue
         end
 
-        local distance = Math.Distance(Camera.CFrame.Position, hrp.Position)
-        if distance > 1000 then
+        local dist = Distance(Camera.CFrame.Position, hrp.Position)
+        if dist > 1000 then
             box.Visible = false
-            self.Names[player].Visible = false
-            self.Tracers[player].Visible = false
-            self.HealthBars[player].Visible = false
-            self.DistanceLabels[player].Visible = false
+            ESP.Names[player].Visible = false
+            ESP.Tracers[player].Visible = false
+            ESP.HealthBars[player].Visible = false
             continue
         end
 
         local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
         local legPos = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
-
         local boxHeight = math.abs(headPos.Y - legPos.Y)
         local boxWidth = boxHeight * 0.55
 
         box.Size = Vector2.new(boxWidth, boxHeight)
         box.Position = Vector2.new(pos.X - boxWidth / 2, pos.Y - boxHeight / 2)
-        box.Color = Config.RainbowMode and Math.Rainbow(1) or Config.ESPColor
+        box.Color = Config.RainbowMode and Rainbow(1) or Config.ESPColor
         box.Visible = true
 
-        self.Names[player].Position = Vector2.new(pos.X, pos.Y - boxHeight / 2 - 18)
-        self.Names[player].Text = player.Name .. " [" .. math.floor(distance) .. "m]"
-        self.Names[player].Visible = true
+        ESP.Names[player].Position = Vector2.new(pos.X, pos.Y - boxHeight / 2 - 18)
+        ESP.Names[player].Text = player.Name .. " [" .. math.floor(dist) .. "m]"
+        ESP.Names[player].Visible = true
 
-        self.Tracers[player].From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-        self.Tracers[player].To = Vector2.new(pos.X, pos.Y + boxHeight / 2)
-        self.Tracers[player].Visible = true
+        ESP.Tracers[player].From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        ESP.Tracers[player].To = Vector2.new(pos.X, pos.Y + boxHeight / 2)
+        ESP.Tracers[player].Visible = true
 
-        local healthPercent = humanoid.Health / humanoid.MaxHealth
-        local barHeight = boxHeight * healthPercent
-
-        self.HealthBars[player].Size = Vector2.new(3, barHeight)
-        self.HealthBars[player].Position = Vector2.new(pos.X - boxWidth / 2 - 6, pos.Y - boxHeight / 2 + (boxHeight - barHeight))
-        self.HealthBars[player].Color = Color3.fromRGB(255 * (1 - healthPercent), 255 * healthPercent, 0)
-        self.HealthBars[player].Visible = true
-
-        self.DistanceLabels[player].Position = Vector2.new(pos.X, pos.Y + boxHeight / 2 + 5)
-        self.DistanceLabels[player].Text = math.floor(distance) .. "m"
-        self.DistanceLabels[player].Visible = true
+        local hp = humanoid.Health / humanoid.MaxHealth
+        local bh = boxHeight * hp
+        ESP.HealthBars[player].Size = Vector2.new(3, bh)
+        ESP.HealthBars[player].Position = Vector2.new(pos.X - boxWidth / 2 - 6, pos.Y - boxHeight / 2 + (boxHeight - bh))
+        ESP.HealthBars[player].Color = Color3.fromRGB(255 * (1 - hp), 255 * hp, 0)
+        ESP.HealthBars[player].Visible = true
     end
 end
 
+function ESP:UpdateBall()
+    if not Config.BallESP then
+        if ESP.BallCircle then ESP.BallCircle.Visible = false end
+        if ESP.BallInfo then ESP.BallInfo.Visible = false end
+        return
+    end
+
+    local ball = GameData.CurrentBall
+    if not ball or not ball:IsA("BasePart") then
+        if ESP.BallCircle then ESP.BallCircle.Visible = false end
+        if ESP.BallInfo then ESP.BallInfo.Visible = false end
+        return
+    end
+
+    if not ESP.BallCircle then
+        ESP.BallCircle = Drawing.new("Circle")
+        ESP.BallCircle.Thickness = 2
+        ESP.BallCircle.NumSides = 32
+        ESP.BallCircle.Filled = false
+        ESP.BallCircle.Transparency = 0.8
+        ESP.BallCircle.Color = Color3.fromRGB(255, 255, 0)
+    end
+
+    if not ESP.BallInfo then
+        ESP.BallInfo = Drawing.new("Text")
+        ESP.BallInfo.Size = 12
+        ESP.BallInfo.Center = true
+        ESP.BallInfo.Outline = true
+        ESP.BallInfo.Color = Color3.new(1, 1, 1)
+    end
+
+    local bs, onScreen = Camera:WorldToViewportPoint(ball.Position)
+    if onScreen then
+        local dist = Distance(Camera.CFrame.Position, ball.Position)
+        local radius = math.clamp(500 / dist, 10, 100)
+
+        ESP.BallCircle.Position = Vector2.new(bs.X, bs.Y)
+        ESP.BallCircle.Radius = radius
+        ESP.BallCircle.Visible = true
+
+        ESP.BallInfo.Position = Vector2.new(bs.X, bs.Y - radius - 15)
+        ESP.BallInfo.Text = string.format("BALL | %.1fm | %.1f spd", dist, ball.Velocity.Magnitude)
+        ESP.BallInfo.Visible = true
+    else
+        ESP.BallCircle.Visible = false
+        ESP.BallInfo.Visible = false
+    end
+end
+
+function ESP:Update()
+    ESP:UpdatePlayers()
+    ESP:UpdateBall()
+end
+
 --// ============================================
---// MODULE 10: MODERN UI (TOGGLE BUKA/TUTUP)
+--// UI SYSTEM - TOGGLE HIJAU/MERAH
 --// ============================================
 
-local UI = {}
-UI.ScreenGui = nil
-UI.MainFrame = nil
-UI.ToggleButton = nil
-UI.Tabs = {}
-UI.IsVisible = true
-UI.Theme = {
-    Primary = Color3.fromRGB(12, 12, 22),
-    Secondary = Color3.fromRGB(22, 22, 38),
-    Accent = Color3.fromRGB(0, 255, 136),
-    Accent2 = Color3.fromRGB(255, 0, 85),
-    Text = Color3.fromRGB(255, 255, 255),
-    TextDark = Color3.fromRGB(160, 160, 180),
-    Border = Color3.fromRGB(35, 35, 55)
+local UI = {
+    ScreenGui = nil,
+    MainFrame = nil,
+    ToggleButton = nil,
+    Tabs = {},
+    IsVisible = true,
+    Theme = {
+        Primary = Color3.fromRGB(10, 10, 18),
+        Secondary = Color3.fromRGB(20, 20, 35),
+        Accent = Color3.fromRGB(0, 255, 100),
+        Danger = Color3.fromRGB(255, 50, 50),
+        Text = Color3.fromRGB(255, 255, 255),
+        TextDark = Color3.fromRGB(140, 140, 160),
+        Border = Color3.fromRGB(30, 30, 50)
+    }
 }
 
-function UI:CreateElement(className, properties)
-    local element = Instance.new(className)
-    for prop, value in pairs(properties) do
-        element[prop] = value
-    end
-    return element
+function UI:Create(className, props)
+    local e = Instance.new(className)
+    for p, v in pairs(props) do e[p] = v end
+    return e
 end
 
-function UI:CreateCorner(parent, radius)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, radius or 8)
-    corner.Parent = parent
-    return corner
+function UI:Corner(parent, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = parent
+    return c
 end
 
-function UI:Initialize()
-    -- ScreenGui dengan Delta compatibility
-    self.ScreenGui = self:CreateElement("ScreenGui", {
-        Name = "NXUI",
+function UI:Init()
+    self.ScreenGui = self:Create("ScreenGui", {
+        Name = "NX",
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         ResetOnSpawn = false
     })
@@ -769,155 +755,118 @@ function UI:Initialize()
     end
 
     -- Main Frame
-    self.MainFrame = self:CreateElement("Frame", {
-        Name = "Main",
-        Size = UDim2.new(0, 600, 0, 400),
-        Position = UDim2.new(0.5, -300, 0.5, -200),
+    self.MainFrame = self:Create("Frame", {
+        Name = "M",
+        Size = UDim2.new(0, 550, 0, 380),
+        Position = UDim2.new(0.5, -275, 0.5, -190),
         BackgroundColor3 = self.Theme.Primary,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         ZIndex = 10
     })
     self.MainFrame.Parent = self.ScreenGui
-    self:CreateCorner(self.MainFrame, 12)
+    self:Corner(self.MainFrame, 14)
 
-    -- Stroke
     local stroke = Instance.new("UIStroke")
     stroke.Color = self.Theme.Border
     stroke.Thickness = 1.5
     stroke.Parent = self.MainFrame
 
-    -- Title Bar
-    local titleBar = self:CreateElement("Frame", {
-        Name = "Title",
-        Size = UDim2.new(1, 0, 0, 40),
+    -- Title
+    local titleBar = self:Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 42),
         BackgroundColor3 = self.Theme.Secondary,
         BorderSizePixel = 0,
         ZIndex = 11
     })
     titleBar.Parent = self.MainFrame
-    self:CreateCorner(titleBar, 12)
+    self:Corner(titleBar, 14)
 
-    local titleText = self:CreateElement("TextLabel", {
-        Size = UDim2.new(0, 250, 1, 0),
-        Position = UDim2.new(0, 15, 0, 0),
+    local titleText = self:Create("TextLabel", {
+        Size = UDim2.new(0, 300, 1, 0),
+        Position = UDim2.new(0, 18, 0, 0),
         BackgroundTransparency = 1,
-        Text = "NanoXyin // Blade Ball",
-        TextColor3 = self.Theme.Text,
-        TextSize = 16,
-        Font = Enum.Font.GothamBold,
+        Text = "NANOXYIN  MESIN KERJA",
+        TextColor3 = self.Theme.Accent,
+        TextSize = 18,
+        Font = Enum.Font.GothamBlack,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 12
     })
     titleText.Parent = titleBar
 
-    -- Accent line
-    local accentLine = self:CreateElement("Frame", {
-        Size = UDim2.new(0, 3, 0, 20),
-        Position = UDim2.new(0, 0, 0.5, -10),
+    local accent = self:Create("Frame", {
+        Size = UDim2.new(0, 4, 0, 22),
+        Position = UDim2.new(0, 0, 0.5, -11),
         BackgroundColor3 = self.Theme.Accent,
         BorderSizePixel = 0,
         ZIndex = 12
     })
-    accentLine.Parent = titleBar
+    accent.Parent = titleBar
 
-    -- Close button
-    local closeBtn = self:CreateElement("TextButton", {
-        Size = UDim2.new(0, 30, 0, 30),
-        Position = UDim2.new(1, -35, 0, 5),
-        BackgroundColor3 = self.Theme.Accent2,
+    local closeBtn = self:Create("TextButton", {
+        Size = UDim2.new(0, 32, 0, 32),
+        Position = UDim2.new(1, -38, 0, 5),
+        BackgroundColor3 = self.Theme.Danger,
         Text = "X",
-        TextColor3 = self.Theme.Text,
+        TextColor3 = Color3.new(1, 1, 1),
         TextSize = 14,
         Font = Enum.Font.GothamBold,
         ZIndex = 12
     })
     closeBtn.Parent = titleBar
-    self:CreateCorner(closeBtn, 6)
-
-    closeBtn.MouseButton1Click:Connect(function()
-        self:Toggle()
-    end)
+    self:Corner(closeBtn, 8)
+    closeBtn.MouseButton1Click:Connect(function() self:Toggle() end)
 
     -- Tab Frame
-    local tabFrame = self:CreateElement("Frame", {
-        Size = UDim2.new(0, 140, 1, -70),
-        Position = UDim2.new(0, 10, 0, 50),
+    local tabFrame = self:Create("Frame", {
+        Size = UDim2.new(0, 150, 1, -72),
+        Position = UDim2.new(0, 10, 0, 52),
         BackgroundColor3 = self.Theme.Secondary,
         BorderSizePixel = 0,
         ZIndex = 11
     })
     tabFrame.Parent = self.MainFrame
-    self:CreateCorner(tabFrame, 8)
+    self:Corner(tabFrame, 10)
 
     -- Content Frame
-    local contentFrame = self:CreateElement("Frame", {
-        Size = UDim2.new(1, -160, 1, -70),
-        Position = UDim2.new(0, 155, 0, 50),
+    local contentFrame = self:Create("Frame", {
+        Size = UDim2.new(1, -170, 1, -72),
+        Position = UDim2.new(0, 165, 0, 52),
         BackgroundColor3 = self.Theme.Secondary,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         ZIndex = 11
     })
     contentFrame.Parent = self.MainFrame
-    self:CreateCorner(contentFrame, 8)
+    self:Corner(contentFrame, 10)
 
     -- Status Bar
-    local statusBar = self:CreateElement("Frame", {
-        Size = UDim2.new(1, -20, 0, 25),
-        Position = UDim2.new(0, 10, 1, -30),
+    local statusBar = self:Create("Frame", {
+        Size = UDim2.new(1, -20, 0, 26),
+        Position = UDim2.new(0, 10, 1, -32),
         BackgroundColor3 = self.Theme.Secondary,
         BorderSizePixel = 0,
         ZIndex = 11
     })
     statusBar.Parent = self.MainFrame
-    self:CreateCorner(statusBar, 6)
+    self:Corner(statusBar, 8)
 
-    local statusText = self:CreateElement("TextLabel", {
+    local statusText = self:Create("TextLabel", {
         Size = UDim2.new(1, -10, 1, 0),
-        Position = UDim2.new(0, 5, 0, 0),
+        Position = UDim2.new(0, 6, 0, 0),
         BackgroundTransparency = 1,
-        Text = "Status: Ready | NanoXyin v11.0",
+        Text = "MESIN KERJA v13.0 | Semua Fitur Aktif",
         TextColor3 = self.Theme.TextDark,
-        TextSize = 12,
+        TextSize = 11,
         Font = Enum.Font.Gotham,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 12
     })
     statusText.Parent = statusBar
 
-    -- Drag functionality
-    local isDragging = false
-    local dragStart = nil
-    local startPos = nil
-
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = true
-            dragStart = input.Position
-            startPos = self.MainFrame.Position
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            self.MainFrame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = false
-        end
-    end)
-
-    -- Floating Toggle Button
-    self.ToggleButton = self:CreateElement("TextButton", {
-        Name = "Toggle",
+    -- Toggle Button (Floating)
+    self.ToggleButton = self:Create("TextButton", {
         Size = UDim2.new(0, 50, 0, 50),
         Position = UDim2.new(0, 20, 0.5, -25),
         BackgroundColor3 = self.Theme.Accent,
@@ -929,46 +878,67 @@ function UI:Initialize()
         Visible = false
     })
     self.ToggleButton.Parent = self.ScreenGui
-    self:CreateCorner(self.ToggleButton, 12)
+    self:Corner(self.ToggleButton, 14)
 
-    self.ToggleButton.MouseButton1Click:Connect(function()
-        self:Toggle()
+    self.ToggleButton.MouseButton1Click:Connect(function() self:Toggle() end)
+
+    -- Drag
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = self.MainFrame.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            self.MainFrame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
     end)
 
     -- Create tabs
-    self:CreateTab(tabFrame, contentFrame, "Combat", 0)
-    self:CreateTab(tabFrame, contentFrame, "Visuals", 1)
-    self:CreateTab(tabFrame, contentFrame, "Movement", 2)
-    self:CreateTab(tabFrame, contentFrame, "Settings", 3)
+    self:MakeTab(tabFrame, contentFrame, "COMBAT", 0)
+    self:MakeTab(tabFrame, contentFrame, "VISUAL", 1)
+    self:MakeTab(tabFrame, contentFrame, "GERAK", 2)
 
-    -- Select first tab
-    self:SelectTab("Combat")
+    self:SelectTab("COMBAT")
 
-    -- Setup content
-    self:SetupCombatTab(self.Tabs["Combat"].Content)
-    self:SetupVisualsTab(self.Tabs["Visuals"].Content)
-    self:SetupMovementTab(self.Tabs["Movement"].Content)
-    self:SetupSettingsTab(self.Tabs["Settings"].Content)
+    self:SetupCombat(self.Tabs["COMBAT"].Content)
+    self:SetupVisual(self.Tabs["VISUAL"].Content)
+    self:SetupGerak(self.Tabs["GERAK"].Content)
 end
 
-function UI:CreateTab(tabFrame, contentFrame, name, index)
-    local tabBtn = self:CreateElement("TextButton", {
-        Name = name .. "Tab",
-        Size = UDim2.new(1, -10, 0, 35),
-        Position = UDim2.new(0, 5, 0, 10 + (index * 40)),
+function UI:MakeTab(tabFrame, contentFrame, name, index)
+    local btn = self:Create("TextButton", {
+        Size = UDim2.new(1, -10, 0, 36),
+        Position = UDim2.new(0, 5, 0, 10 + (index * 44)),
         BackgroundColor3 = self.Theme.Primary,
-        Text = "  " .. name,
+        Text = "   " .. name,
         TextColor3 = self.Theme.TextDark,
         TextSize = 13,
-        Font = Enum.Font.GothamSemibold,
+        Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 12
     })
-    tabBtn.Parent = tabFrame
-    self:CreateCorner(tabBtn, 6)
+    btn.Parent = tabFrame
+    self:Corner(btn, 8)
 
-    local tabContent = self:CreateElement("ScrollingFrame", {
-        Name = name .. "Content",
+    local content = self:Create("ScrollingFrame", {
         Size = UDim2.new(1, -10, 1, -10),
         Position = UDim2.new(0, 5, 0, 5),
         BackgroundTransparency = 1,
@@ -978,27 +948,23 @@ function UI:CreateTab(tabFrame, contentFrame, name, index)
         Visible = false,
         ZIndex = 12
     })
-    tabContent.Parent = contentFrame
+    content.Parent = contentFrame
 
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = tabContent
+    layout.Parent = content
 
-    self.Tabs[name] = {
-        Button = tabBtn,
-        Content = tabContent,
-        Active = false
-    }
+    self.Tabs[name] = {Button = btn, Content = content, Active = false}
 
-    tabBtn.MouseButton1Click:Connect(function()
+    btn.MouseButton1Click:Connect(function()
         self:SelectTab(name)
     end)
 end
 
 function UI:SelectTab(name)
-    for tabName, tab in pairs(self.Tabs) do
-        if tabName == name then
+    for n, tab in pairs(self.Tabs) do
+        if n == name then
             tab.Active = true
             tab.Button.BackgroundColor3 = self.Theme.Accent
             tab.Button.TextColor3 = self.Theme.Primary
@@ -1018,8 +984,8 @@ function UI:Toggle()
     if self.IsVisible then
         self.MainFrame.Visible = true
         TweenService:Create(self.MainFrame, TweenInfo.new(0.3), {
-            Size = UDim2.new(0, 600, 0, 400),
-            Position = UDim2.new(0.5, -300, 0.5, -200)
+            Size = UDim2.new(0, 550, 0, 380),
+            Position = UDim2.new(0.5, -275, 0.5, -190)
         }):Play()
         self.ToggleButton.Visible = false
     else
@@ -1027,92 +993,124 @@ function UI:Toggle()
             Size = UDim2.new(0, 0, 0, 0),
             Position = UDim2.new(0.5, 0, 0.5, 0)
         }):Play()
-        task.delay(0.3, function()
+        delay(0.3, function()
             self.MainFrame.Visible = false
             self.ToggleButton.Visible = true
         end)
     end
 end
 
-function UI:CreateToggle(parent, text, default, callback)
-    local frame = self:CreateElement("Frame", {
-        Size = UDim2.new(1, 0, 0, 35),
+-- ============================================
+-- TOGGLE BAR: AKTIF = HIJAU, NONAKTIF = MERAH
+-- ============================================
+
+function UI:MakeToggle(parent, text, default, callback)
+    local frame = self:Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = self.Theme.Primary,
         BorderSizePixel = 0,
         ZIndex = 13
     })
     frame.Parent = parent
-    self:CreateCorner(frame, 6)
+    self:Corner(frame, 8)
 
-    local label = self:CreateElement("TextLabel", {
-        Size = UDim2.new(0.7, -10, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
+    local label = self:Create("TextLabel", {
+        Size = UDim2.new(0.6, -10, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = text,
         TextColor3 = self.Theme.Text,
         TextSize = 13,
-        Font = Enum.Font.Gotham,
+        Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 14
     })
     label.Parent = frame
 
-    local toggleBtn = self:CreateElement("Frame", {
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(1, -50, 0.5, -10),
-        BackgroundColor3 = default and self.Theme.Accent or self.Theme.Border,
+    -- Status indicator (HIJAU/MERAH)
+    local statusFrame = self:Create("Frame", {
+        Size = UDim2.new(0, 50, 0, 22),
+        Position = UDim2.new(1, -62, 0.5, -11),
+        BackgroundColor3 = default and self.Theme.Accent or self.Theme.Danger,
         BorderSizePixel = 0,
         ZIndex = 14
     })
-    toggleBtn.Parent = frame
-    self:CreateCorner(toggleBtn, 10)
+    statusFrame.Parent = frame
+    self:Corner(statusFrame, 11)
 
-    local circle = self:CreateElement("Frame", {
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+    local circle = self:Create("Frame", {
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = default and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
         ZIndex = 15
     })
-    circle.Parent = toggleBtn
-    self:CreateCorner(circle, 8)
+    circle.Parent = statusFrame
+    self:Corner(circle, 9)
+
+    -- Status text
+    local statusText = self:Create("TextLabel", {
+        Size = UDim2.new(0, 50, 0, 18),
+        Position = UDim2.new(1, -115, 0.5, -9),
+        BackgroundTransparency = 1,
+        Text = default and "AKTIF" or "MATI",
+        TextColor3 = default and self.Theme.Accent or self.Theme.Danger,
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 14
+    })
+    statusText.Parent = frame
 
     local enabled = default
 
-    toggleBtn.InputBegan:Connect(function(input)
+    local function UpdateVisual()
+        if enabled then
+            -- AKTIF = HIJAU
+            TweenService:Create(statusFrame, TweenInfo.new(0.25), {
+                BackgroundColor3 = self.Theme.Accent
+            }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.25), {
+                Position = UDim2.new(1, -20, 0.5, -9)
+            }):Play()
+            statusText.Text = "AKTIF"
+            statusText.TextColor3 = self.Theme.Accent
+        else
+            -- NONAKTIF = MERAH
+            TweenService:Create(statusFrame, TweenInfo.new(0.25), {
+                BackgroundColor3 = self.Theme.Danger
+            }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.25), {
+                Position = UDim2.new(0, 2, 0.5, -9)
+            }):Play()
+            statusText.Text = "MATI"
+            statusText.TextColor3 = self.Theme.Danger
+        end
+    end
+
+    frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             enabled = not enabled
-
-            TweenService:Create(toggleBtn, TweenInfo.new(0.2), {
-                BackgroundColor3 = enabled and self.Theme.Accent or self.Theme.Border
-            }):Play()
-
-            TweenService:Create(circle, TweenInfo.new(0.2), {
-                Position = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-            }):Play()
-
-            if callback then
-                callback(enabled)
-            end
+            UpdateVisual()
+            if callback then callback(enabled) end
         end
     end)
 
-    return frame
+    return frame, function() return enabled end
 end
 
-function UI:CreateSlider(parent, text, min, max, default, callback)
-    local frame = self:CreateElement("Frame", {
-        Size = UDim2.new(1, 0, 0, 50),
+function UI:MakeSlider(parent, text, min, max, default, callback)
+    local frame = self:Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 52),
         BackgroundColor3 = self.Theme.Primary,
         BorderSizePixel = 0,
         ZIndex = 13
     })
     frame.Parent = parent
-    self:CreateCorner(frame, 6)
+    self:Corner(frame, 8)
 
-    local label = self:CreateElement("TextLabel", {
-        Size = UDim2.new(0.6, -10, 0, 20),
-        Position = UDim2.new(0, 10, 0, 5),
+    local label = self:Create("TextLabel", {
+        Size = UDim2.new(0.55, -10, 0, 22),
+        Position = UDim2.new(0, 12, 0, 4),
         BackgroundTransparency = 1,
         Text = text,
         TextColor3 = self.Theme.Text,
@@ -1123,9 +1121,9 @@ function UI:CreateSlider(parent, text, min, max, default, callback)
     })
     label.Parent = frame
 
-    local valueLabel = self:CreateElement("TextLabel", {
-        Size = UDim2.new(0, 50, 0, 20),
-        Position = UDim2.new(1, -60, 0, 5),
+    local valueLabel = self:Create("TextLabel", {
+        Size = UDim2.new(0, 50, 0, 22),
+        Position = UDim2.new(1, -62, 0, 4),
         BackgroundTransparency = 1,
         Text = tostring(default),
         TextColor3 = self.Theme.Accent,
@@ -1135,34 +1133,34 @@ function UI:CreateSlider(parent, text, min, max, default, callback)
     })
     valueLabel.Parent = frame
 
-    local track = self:CreateElement("Frame", {
-        Size = UDim2.new(1, -20, 0, 6),
-        Position = UDim2.new(0, 10, 0, 32),
+    local track = self:Create("Frame", {
+        Size = UDim2.new(1, -24, 0, 6),
+        Position = UDim2.new(0, 12, 0, 34),
         BackgroundColor3 = self.Theme.Border,
         BorderSizePixel = 0,
         ZIndex = 14
     })
     track.Parent = frame
-    self:CreateCorner(track, 3)
+    self:Corner(track, 3)
 
-    local fill = self:CreateElement("Frame", {
+    local fill = self:Create("Frame", {
         Size = UDim2.new((default - min) / (max - min), 1, 1, 0),
         BackgroundColor3 = self.Theme.Accent,
         BorderSizePixel = 0,
         ZIndex = 15
     })
     fill.Parent = track
-    self:CreateCorner(fill, 3)
+    self:Corner(fill, 3)
 
-    local knob = self:CreateElement("Frame", {
-        Size = UDim2.new(0, 14, 0, 14),
-        Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7),
+    local knob = self:Create("Frame", {
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
         ZIndex = 16
     })
     knob.Parent = track
-    self:CreateCorner(knob, 7)
+    self:Corner(knob, 8)
 
     local dragging = false
 
@@ -1171,12 +1169,10 @@ function UI:CreateSlider(parent, text, min, max, default, callback)
         local value = math.floor(min + (max - min) * pos)
 
         fill.Size = UDim2.new(pos, 0, 1, 0)
-        knob.Position = UDim2.new(pos, -7, 0.5, -7)
+        knob.Position = UDim2.new(pos, -8, 0.5, -8)
         valueLabel.Text = tostring(value)
 
-        if callback then
-            callback(value)
-        end
+        if callback then callback(value) end
     end
 
     knob.InputBegan:Connect(function(input)
@@ -1207,82 +1203,105 @@ function UI:CreateSlider(parent, text, min, max, default, callback)
     return frame
 end
 
-function UI:SetupCombatTab(content)
-    self:CreateToggle(content, "Enable Auto Parry", Config.AutoParry, function(v)
+function UI:MakeSeparator(parent)
+    local sep = self:Create("Frame", {
+        Size = UDim2.new(1, -12, 0, 1),
+        Position = UDim2.new(0, 6, 0, 0),
+        BackgroundColor3 = self.Theme.Border,
+        BorderSizePixel = 0,
+        ZIndex = 13
+    })
+    sep.Parent = parent
+    return sep
+end
+
+function UI:MakeLabel(parent, text)
+    local label = self:Create("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 20),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = self.Theme.TextDark,
+        TextSize = 11,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 13
+    })
+    label.Parent = parent
+    return label
+end
+
+-- ============================================
+-- SETUP TAB CONTENT
+-- ============================================
+
+function UI:SetupCombat(content)
+    self:MakeLabel(content, "MESIN PARRY")
+
+    self:MakeToggle(content, "Auto Parry", Config.AutoParry, function(v)
         Config.AutoParry = v
     end)
 
-    self:CreateSlider(content, "Parry Distance", 10, 60, Config.AutoParryDistance, function(v)
+    self:MakeSlider(content, "Jarak Parry", 10, 60, Config.AutoParryDistance, function(v)
         Config.AutoParryDistance = v
         AutoParry.ParryRadius = v
     end)
 
-    self:CreateSlider(content, "Reaction Time (ms)", 50, 400, 120, function(v)
+    self:MakeSlider(content, "Waktu Reaksi (ms)", 50, 400, 120, function(v)
         Config.AutoParryReaction = v / 1000
         AutoParry.ReactionTime = v / 1000
     end)
 
-    self:CreateToggle(content, "Auto Spam", Config.AutoSpam, function(v)
+    self:MakeToggle(content, "Auto Spam Parry", Config.AutoSpam, function(v)
         Config.AutoSpam = v
     end)
 
-    self:CreateToggle(content, "Enable FOV Lock", Config.LockFOV, function(v)
+    self:MakeSeparator(content)
+    self:MakeLabel(content, "MESIN DODGE")
+
+    self:MakeToggle(content, "Auto Dodge", Config.AutoDodge, function(v)
+        Config.AutoDodge = v
+    end)
+
+    self:MakeSlider(content, "Jarak Dodge", 5, 30, Config.DodgeDistance, function(v)
+        Config.DodgeDistance = v
+    end)
+end
+
+function UI:SetupVisual(content)
+    self:MakeLabel(content, "MESIN AIM")
+
+    self:MakeToggle(content, "FOV Lock", Config.LockFOV, function(v)
         Config.LockFOV = v
     end)
 
-    self:CreateSlider(content, "FOV Size", 50, 350, Config.FOVSize, function(v)
+    self:MakeSlider(content, "Ukuran FOV", 50, 350, Config.FOVSize, function(v)
         Config.FOVSize = v
     end)
 
-    self:CreateToggle(content, "Show FOV", Config.ShowFOV, function(v)
+    self:MakeToggle(content, "Tampilkan FOV", Config.ShowFOV, function(v)
         Config.ShowFOV = v
     end)
 
-    self:CreateToggle(content, "Auto Ability", Config.AutoAbility, function(v)
-        Config.AutoAbility = v
-    end)
+    self:MakeSeparator(content)
+    self:MakeLabel(content, "MESIN ESP")
 
-    self:CreateToggle(content, "Auto Clash", Config.AutoClash, function(v)
-        Config.AutoClash = v
-    end)
-
-    self:CreateToggle(content, "Auto Dodge", Config.AutoDodge, function(v)
-        Config.AutoDodge = v
-    end)
-end
-
-function UI:SetupVisualsTab(content)
-    self:CreateToggle(content, "Enable ESP", Config.ESP, function(v)
+    self:MakeToggle(content, "ESP Player", Config.ESP, function(v)
         Config.ESP = v
     end)
 
-    self:CreateToggle(content, "Ball ESP", Config.BallESP, function(v)
+    self:MakeToggle(content, "ESP Bola", Config.BallESP, function(v)
         Config.BallESP = v
     end)
 
-    self:CreateToggle(content, "Trajectory ESP", Config.TrajectoryESP, function(v)
-        Config.TrajectoryESP = v
-    end)
-
-    self:CreateToggle(content, "Rainbow Mode", Config.RainbowMode, function(v)
+    self:MakeToggle(content, "Rainbow Mode", Config.RainbowMode, function(v)
         Config.RainbowMode = v
-    end)
-
-    self:CreateToggle(content, "Streamer Mode", Config.StreamerMode, function(v)
-        Config.StreamerMode = v
-    end)
-
-    self:CreateToggle(content, "Visual Effects", Config.VisualEffects, function(v)
-        Config.VisualEffects = v
-    end)
-
-    self:CreateToggle(content, "Sound Effects", Config.SoundEffects, function(v)
-        Config.SoundEffects = v
     end)
 end
 
-function UI:SetupMovementTab(content)
-    self:CreateSlider(content, "Walk Speed", 16, 200, Config.WalkSpeed, function(v)
+function UI:SetupGerak(content)
+    self:MakeLabel(content, "KECEPATAN")
+
+    self:MakeSlider(content, "Walk Speed", 16, 200, Config.WalkSpeed, function(v)
         Config.WalkSpeed = v
         local char = LocalPlayer.Character
         if char then
@@ -1291,7 +1310,7 @@ function UI:SetupMovementTab(content)
         end
     end)
 
-    self:CreateSlider(content, "Jump Power", 50, 200, Config.JumpPower, function(v)
+    self:MakeSlider(content, "Jump Power", 50, 200, Config.JumpPower, function(v)
         Config.JumpPower = v
         local char = LocalPlayer.Character
         if char then
@@ -1300,98 +1319,215 @@ function UI:SetupMovementTab(content)
         end
     end)
 
-    self:CreateToggle(content, "Infinite Jump", Config.InfiniteJump, function(v)
+    self:MakeSeparator(content)
+    self:MakeLabel(content, "UTILITAS")
+
+    self:MakeToggle(content, "Infinite Jump", Config.InfiniteJump, function(v)
         Config.InfiniteJump = v
     end)
 
-    self:CreateToggle(content, "Anti-AFK", Config.AntiAFK, function(v)
+    self:MakeToggle(content, "Anti-AFK", Config.AntiAFK, function(v)
         Config.AntiAFK = v
     end)
 end
 
-function UI:SetupSettingsTab(content)
-    local resetBtn = self:CreateElement("TextButton", {
-        Size = UDim2.new(1, 0, 0, 35),
-        BackgroundColor3 = self.Theme.Accent,
-        Text = "Reset to Default",
-        TextColor3 = self.Theme.Primary,
-        TextSize = 14,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 13
-    })
-    resetBtn.Parent = content
-    self:CreateCorner(resetBtn, 6)
+--// ============================================
+--// NOTIFICATION
+--// ============================================
 
-    resetBtn.MouseButton1Click:Connect(function()
-        Config.AutoParry = true
-        Config.AutoParryDistance = 25
-        Config.AutoParryReaction = 0.12
-        Config.LockFOV = true
-        Config.FOVSize = 150
-        Config.ShowFOV = true
-        Config.ESP = true
-        Config.WalkSpeed = 16
-        Config.JumpPower = 50
+local function Notify(title, message, duration)
+    duration = duration or 3
+
+    local notifyGui = Instance.new("ScreenGui")
+    notifyGui.Name = "N"
+
+    if syn and syn.protect_gui then
+        syn.protect_gui(notifyGui)
+        notifyGui.Parent = CoreGui
+    elseif gethui then
+        notifyGui.Parent = gethui()
+    else
+        notifyGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 300, 0, 65)
+    frame.Position = UDim2.new(1, 30, 0.85, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    frame.BorderSizePixel = 0
+    frame.Parent = notifyGui
+
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 255, 100)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -20, 0, 26)
+    titleLabel.Position = UDim2.new(0, 10, 0, 6)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = title
+    titleLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+    titleLabel.TextSize = 15
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = frame
+
+    local msgLabel = Instance.new("TextLabel")
+    msgLabel.Size = UDim2.new(1, -20, 0, 26)
+    msgLabel.Position = UDim2.new(0, 10, 0, 32)
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.Text = message
+    msgLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+    msgLabel.TextSize = 12
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.Parent = frame
+
+    TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quart), {
+        Position = UDim2.new(1, -320, 0.85, 0)
+    }):Play()
+
+    delay(duration, function()
+        TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {
+            Position = UDim2.new(1, 30, 0.85, 0)
+        }):Play()
+        delay(0.4, function()
+            notifyGui:Destroy()
+        end)
     end)
-
-    local infoLabel = self:CreateElement("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 20),
-        BackgroundTransparency = 1,
-        Text = "Version: v11.0 Delta Ultimate",
-        TextColor3 = self.Theme.TextDark,
-        TextSize = 12,
-        Font = Enum.Font.Gotham,
-        ZIndex = 13
-    })
-    infoLabel.Parent = content
-
-    local execLabel = self:CreateElement("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 20),
-        BackgroundTransparency = 1,
-        Text = "Executor: " .. NX.Executor,
-        TextColor3 = self.Theme.TextDark,
-        TextSize = 12,
-        Font = Enum.Font.Gotham,
-        ZIndex = 13
-    })
-    execLabel.Parent = content
 end
 
 --// ============================================
---// MODULE 11: LOADING SCREEN
+--// MAIN LOOP (MESIN KERJA)
 --// ============================================
 
-local Loading = {}
-Loading.ScreenGui = nil
-Loading.ProgressBar = nil
-Loading.StatusText = nil
+local function MainLoop()
+    -- MESIN PARRY
+    AutoParry:Update()
 
-function Loading:Initialize()
-    self.ScreenGui = Instance.new("ScreenGui")
-    self.ScreenGui.Name = "NXLoader"
-    self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    -- MESIN AIM
+    FOVLock:LockOn()
+    FOVLock:UpdateCircle()
+
+    -- MESIN ESP
+    ESP:Update()
+
+    -- MESIN DODGE
+    if Config.AutoDodge and BallTracker.Prediction then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp and Distance(hrp.Position, BallTracker.Prediction) < Config.DodgeDistance then
+            AutoDodge:Execute()
+        end
+    end
+
+    -- MESIN ANTI-AFK
+    if Config.AntiAFK then
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end
+
+    -- MESIN MOVEMENT
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            if hum.WalkSpeed ~= Config.WalkSpeed then
+                hum.WalkSpeed = Config.WalkSpeed
+            end
+            if hum.JumpPower ~= Config.JumpPower then
+                hum.JumpPower = Config.JumpPower
+            end
+        end
+    end
+
+    -- MESIN SPAM
+    if Config.AutoSpam then
+        if tick() - AutoParry.LastParryTime >= Config.SpamInterval then
+            AutoParry:ExecuteParry()
+        end
+    end
+
+    -- MESIN RAINBOW
+    if Config.RainbowMode then
+        Config.FOVColor = Rainbow(0.5)
+    end
+end
+
+-- Keybinds
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.Insert then
+        UI:Toggle()
+    elseif input.KeyCode == Enum.KeyCode.Delete then
+        Config.AutoParry = not Config.AutoParry
+        Notify("MESIN PARRY", Config.AutoParry and "AKTIF" or "MATI", 2)
+    elseif input.KeyCode == Enum.KeyCode.End then
+        Config.LockFOV = not Config.LockFOV
+        Notify("MESIN AIM", Config.LockFOV and "AKTIF" or "MATI", 2)
+    elseif input.KeyCode == Enum.KeyCode.Home then
+        Config.ESP = not Config.ESP
+        Notify("MESIN ESP", Config.ESP and "AKTIF" or "MATI", 2)
+    end
+end)
+
+-- Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if Config.InfiniteJump then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end
+end)
+
+-- Character setup
+LocalPlayer.CharacterAdded:Connect(function(char)
+    wait(1)
+    local hum = char:WaitForChild("Humanoid")
+    hum.WalkSpeed = Config.WalkSpeed
+    hum.JumpPower = Config.JumpPower
+end)
+
+--// ============================================
+--// INITIALIZATION
+--// ============================================
+
+task.spawn(function()
+    -- Loading
+    local loader = Instance.new("ScreenGui")
+    loader.Name = "L"
 
     if syn and syn.protect_gui then
-        syn.protect_gui(self.ScreenGui)
-        self.ScreenGui.Parent = CoreGui
+        syn.protect_gui(loader)
+        loader.Parent = CoreGui
     elseif gethui then
-        self.ScreenGui.Parent = gethui()
+        loader.Parent = gethui()
     else
-        self.ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        loader.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
 
     local bg = Instance.new("Frame")
     bg.Size = UDim2.new(1, 0, 1, 0)
     bg.BackgroundColor3 = Color3.fromRGB(8, 8, 15)
     bg.BorderSizePixel = 0
-    bg.Parent = self.ScreenGui
+    bg.Parent = loader
 
     local logo = Instance.new("TextLabel")
     logo.Size = UDim2.new(0, 500, 0, 70)
     logo.Position = UDim2.new(0.5, -250, 0.35, -35)
     logo.BackgroundTransparency = 1
     logo.Text = "NANOXYIN"
-    logo.TextColor3 = Color3.fromRGB(0, 255, 136)
+    logo.TextColor3 = Color3.fromRGB(0, 255, 100)
     logo.TextSize = 56
     logo.Font = Enum.Font.GothamBlack
     logo.Parent = bg
@@ -1400,7 +1536,7 @@ function Loading:Initialize()
     subtitle.Size = UDim2.new(0, 500, 0, 30)
     subtitle.Position = UDim2.new(0.5, -250, 0.35, 40)
     subtitle.BackgroundTransparency = 1
-    subtitle.Text = "Blade Ball Delta Ultimate v11.0"
+    subtitle.Text = "MESIN KERJA v13.0"
     subtitle.TextColor3 = Color3.fromRGB(160, 160, 180)
     subtitle.TextSize = 16
     subtitle.Font = Enum.Font.Gotham
@@ -1413,326 +1549,103 @@ function Loading:Initialize()
     progressBg.BorderSizePixel = 0
     progressBg.Parent = bg
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 3)
-    corner.Parent = progressBg
+    Instance.new("UICorner", progressBg).CornerRadius = UDim.new(0, 3)
 
-    self.ProgressBar = Instance.new("Frame")
-    self.ProgressBar.Size = UDim2.new(0, 0, 1, 0)
-    self.ProgressBar.BackgroundColor3 = Color3.fromRGB(0, 255, 136)
-    self.ProgressBar.BorderSizePixel = 0
-    self.ProgressBar.Parent = progressBg
+    local progress = Instance.new("Frame")
+    progress.Size = UDim2.new(0, 0, 1, 0)
+    progress.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    progress.BorderSizePixel = 0
+    progress.Parent = progressBg
 
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(0, 3)
-    fillCorner.Parent = self.ProgressBar
+    Instance.new("UICorner", progress).CornerRadius = UDim.new(0, 3)
 
-    self.StatusText = Instance.new("TextLabel")
-    self.StatusText.Size = UDim2.new(0, 500, 0, 20)
-    self.StatusText.Position = UDim2.new(0.5, -250, 0.5, 45)
-    self.StatusText.BackgroundTransparency = 1
-    self.StatusText.Text = "Initializing..."
-    self.StatusText.TextColor3 = Color3.fromRGB(130, 130, 150)
-    self.StatusText.TextSize = 12
-    self.StatusText.Font = Enum.Font.Gotham
-    self.StatusText.Parent = bg
-end
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(0, 500, 0, 20)
+    status.Position = UDim2.new(0.5, -250, 0.5, 45)
+    status.BackgroundTransparency = 1
+    status.Text = "Memuat mesin..."
+    status.TextColor3 = Color3.fromRGB(130, 130, 150)
+    status.TextSize = 12
+    status.Font = Enum.Font.Gotham
+    status.Parent = bg
 
-function Loading:UpdateProgress(percent, status)
-    if self.ProgressBar then
-        TweenService:Create(self.ProgressBar, TweenInfo.new(0.4), {
-            Size = UDim2.new(percent / 100, 0, 1, 0)
+    local steps = {
+        {10, "Bypass anti-cheat..."},
+        {30, "Deteksi game..."},
+        {50, "Mesin parry aktif..."},
+        {70, "Mesin aim aktif..."},
+        {90, "Mesin ESP aktif..."},
+        {100, "SEMUA MESIN SIAP!"}
+    }
+
+    for _, step in ipairs(steps) do
+        wait(0.3)
+        TweenService:Create(progress, TweenInfo.new(0.4), {
+            Size = UDim2.new(step[1] / 100, 0, 1, 0)
         }):Play()
-    end
-    if self.StatusText then
-        self.StatusText.Text = status
-    end
-end
-
-function Loading:Destroy()
-    if self.ScreenGui then
-        TweenService:Create(self.ScreenGui:FindFirstChildOfClass("Frame"), TweenInfo.new(0.5), {
-            BackgroundTransparency = 1
-        }):Play()
-        task.delay(0.6, function()
-            self.ScreenGui:Destroy()
-        end)
-    end
-end
-
---// ============================================
---// MODULE 12: NOTIFICATION SYSTEM
---// ============================================
-
-function NX:Notify(title, message, duration)
-    duration = duration or 3
-
-    local notifyGui = Instance.new("ScreenGui")
-    notifyGui.Name = "NXNotify"
-
-    if syn and syn.protect_gui then
-        syn.protect_gui(notifyGui)
-        notifyGui.Parent = CoreGui
-    elseif gethui then
-        notifyGui.Parent = gethui()
-    else
-        notifyGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        status.Text = step[2]
     end
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 320, 0, 70)
-    frame.Position = UDim2.new(1, 30, 0.85, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(22, 22, 38)
-    frame.BorderSizePixel = 0
-    frame.Parent = notifyGui
+    wait(0.5)
+    TweenService:Create(bg, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+    delay(0.6, function() loader:Destroy() end)
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = frame
+    -- Setup UI
+    UI:Init()
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(0, 255, 136)
-    stroke.Thickness = 1.5
-    stroke.Parent = frame
-
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -20, 0, 28)
-    titleLabel.Position = UDim2.new(0, 10, 0, 6)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = title
-    titleLabel.TextColor3 = Color3.fromRGB(0, 255, 136)
-    titleLabel.TextSize = 15
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Parent = frame
-
-    local msgLabel = Instance.new("TextLabel")
-    msgLabel.Size = UDim2.new(1, -20, 0, 28)
-    msgLabel.Position = UDim2.new(0, 10, 0, 34)
-    msgLabel.BackgroundTransparency = 1
-    msgLabel.Text = message
-    msgLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
-    msgLabel.TextSize = 12
-    msgLabel.Font = Enum.Font.Gotham
-    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
-    msgLabel.Parent = frame
-
-    TweenService:Create(frame, TweenInfo.new(0.5, Enum.EasingStyle.Quart), {
-        Position = UDim2.new(1, -340, 0.85, 0)
-    }):Play()
-
-    task.delay(duration, function()
-        TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {
-            Position = UDim2.new(1, 30, 0.85, 0)
-        }):Play()
-        task.delay(0.4, function()
-            notifyGui:Destroy()
-        end)
-    end)
-end
-
---// ============================================
---// MODULE 13: MAIN LOOP & KEYBINDS
---// ============================================
-
-local function MainLoop()
-    AutoParry:Update()
-    FOVLock:LockOn()
-    FOVLock:UpdateCircle()
-    ESP:Update()
-
-    if Config.AntiAFK then
-        SafeCall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new())
-        end)
-    end
-
-    local character = LocalPlayer.Character
-    if character then
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid then
-            if humanoid.WalkSpeed ~= Config.WalkSpeed then
-                humanoid.WalkSpeed = Config.WalkSpeed
-            end
-            if humanoid.JumpPower ~= Config.JumpPower then
-                humanoid.JumpPower = Config.JumpPower
-            end
-        end
-    end
-
-    if Config.AutoSpam then
-        if tick() - AutoParry.LastParryTime >= Config.SpamInterval then
-            AutoParry:ExecuteParry()
-        end
-    end
-
-    if Config.RainbowMode then
-        Config.FOVColor = Math.Rainbow(0.5)
-    end
-end
-
--- Keybinds
-local Keybinds = {
-    [Enum.KeyCode.Insert] = function()
-        UI:Toggle()
-    end,
-    [Enum.KeyCode.Delete] = function()
-        Config.AutoParry = not Config.AutoParry
-        NX:Notify("Auto Parry", Config.AutoParry and "Enabled" or "Disabled", 2)
-    end,
-    [Enum.KeyCode.End] = function()
-        Config.LockFOV = not Config.LockFOV
-        NX:Notify("FOV Lock", Config.LockFOV and "Enabled" or "Disabled", 2)
-    end,
-    [Enum.KeyCode.Home] = function()
-        Config.ESP = not Config.ESP
-        NX:Notify("ESP", Config.ESP and "Enabled" or "Disabled", 2)
-    end
-}
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if Keybinds[input.KeyCode] then
-        Keybinds[input.KeyCode]()
-    end
+    Notify("MESIN KERJA", "Semua mesin aktif! Insert untuk UI", 5)
 end)
 
--- Infinite Jump
-UserInputService.JumpRequest:Connect(function()
-    if Config.InfiniteJump then
-        local character = LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end
-    end
-end)
-
--- Character setup
-LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(1)
-    local humanoid = char:WaitForChild("Humanoid")
-    humanoid.WalkSpeed = Config.WalkSpeed
-    humanoid.JumpPower = Config.JumpPower
-    Game:SetupConnections()
-end)
-
---// ============================================
---// MODULE 14: INITIALIZATION SEQUENCE
---// ============================================
-
-local function Initialize()
-    Loading:Initialize()
-
-    Loading:UpdateProgress(10, "Bypassing anti-cheat...")
-    Bypass:Initialize()
-    task.wait(0.3)
-
-    Loading:UpdateProgress(25, "Detecting game...")
-    Game:Detect()
-    Game:SetupConnections()
-    task.wait(0.3)
-
-    Loading:UpdateProgress(40, "Setting up auto parry...")
-    AutoParry.Enabled = true
-    task.wait(0.2)
-
-    Loading:UpdateProgress(55, "Setting up FOV lock...")
-    FOVLock:CreateCircle()
-    task.wait(0.2)
-
-    Loading:UpdateProgress(70, "Setting up ESP...")
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            ESP:AddPlayer(player)
-        end
-    end
-
-    Players.PlayerAdded:Connect(function(player)
-        ESP:AddPlayer(player)
-    end)
-
-    Players.PlayerRemoving:Connect(function(player)
-        ESP:RemovePlayer(player)
-    end)
-    task.wait(0.2)
-
-    Loading:UpdateProgress(85, "Building UI...")
-    UI:Initialize()
-    task.wait(0.3)
-
-    Loading:UpdateProgress(100, "Ready!")
-    task.wait(0.5)
-    Loading:Destroy()
-
-    NX.Status = "Active"
-    NX.IsReady = true
-
-    NX:Notify("NanoXyin v11.0", "Delta Ultimate loaded! Insert to toggle UI", 5)
-end
-
--- Execute
+-- Run
 task.spawn(function()
-    Initialize()
-
     RunService.RenderStepped:Connect(function()
         MainLoop()
     end)
 
     RunService.Heartbeat:Connect(function()
-        if Game.CurrentBall then
-            BallTracker:Update(Game.CurrentBall)
+        if GameData.CurrentBall then
+            BallTracker:Update(GameData.CurrentBall)
         end
     end)
 end)
 
 -- Cleanup
-game:GetService("CoreGui").ChildRemoved:Connect(function(child)
-    if child.Name == "NXUI" then
-        for _, drawing in pairs(ESP.Boxes) do drawing:Remove() end
-        for _, drawing in pairs(ESP.Names) do drawing:Remove() end
-        for _, drawing in pairs(ESP.Tracers) do drawing:Remove() end
-        for _, drawing in pairs(ESP.HealthBars) do drawing:Remove() end
-        for _, drawing in pairs(ESP.DistanceLabels) do drawing:Remove() end
+CoreGui.ChildRemoved:Connect(function(child)
+    if child.Name == "NX" then
+        for _, d in pairs(ESP.Boxes) do d:Remove() end
+        for _, d in pairs(ESP.Names) do d:Remove() end
+        for _, d in pairs(ESP.Tracers) do d:Remove() end
+        for _, d in pairs(ESP.HealthBars) do d:Remove() end
+        if ESP.BallCircle then ESP.BallCircle:Remove() end
+        if ESP.BallInfo then ESP.BallInfo:Remove() end
         if FOVLock.Circle then FOVLock.Circle:Remove() end
     end
 end)
 
-print("[NanoXyin] Blade Ball v11.0 Delta Ultimate loaded")
-print("[NanoXyin] Executor: " .. NX.Executor)
-print("[NanoXyin] Press Insert to toggle UI")
-
 --[[
     ============================================
-    NANOXYIN BLADE BALL v11.0 - DELTA ULTIMATE
-    Modular Architecture | Executor-Safe
+    NANOXYIN BLADE BALL v13.0 - MESIN KERJA
 
-    MODULES:
-    0. Executor Detection & Safety
-    1. Services & Variables
-    2. Anti-Cheat Bypass (Delta Safe)
-    3. Game Detection
-    4. Configuration
-    5. Math Utilities
-    6. Ball Tracker
-    7. Auto Parry (WORKING)
-    8. FOV Lock (WORKING)
-    9. ESP System (WORKING)
-    10. Modern UI (Toggle Buka/Tutup)
-    11. Loading Screen
-    12. Notification System
-    13. Main Loop & Keybinds
-    14. Initialization Sequence
+    FITUR YANG BEKERJA (BUKAN PAJANGAN):
 
-    KEYBINDS:
-    Insert  - Toggle UI
-    Delete  - Toggle Auto Parry
-    End     - Toggle FOV Lock
-    Home    - Toggle ESP
+    [COMBAT]
+    Auto Parry       - MESIN AKTIF
+    Auto Spam Parry  - MESIN AKTIF
+    Auto Dodge       - MESIN AKTIF
 
-    ALL FEATURES WORK - BUKAN PAJANGAN
+    [VISUAL]
+    FOV Lock         - MESIN AKTIF
+    ESP Player       - MESIN AKTIF
+    ESP Bola         - MESIN AKTIF
+    Rainbow Mode     - MESIN AKTIF
+
+    [GERAK]
+    Walk Speed       - MESIN AKTIF
+    Jump Power       - MESIN AKTIF
+    Infinite Jump    - MESIN AKTIF
+    Anti-AFK         - MESIN AKTIF
+
+    TOGGLE: AKTIF = HIJAU | NONAKTIF = MERAH
+    KEYBIND: Insert = UI | Delete = Parry | End = AIM | Home = ESP
     ============================================
 ]]
